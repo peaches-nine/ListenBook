@@ -94,28 +94,15 @@ fun PlayerScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        // Book progress in TopBar
+                        // Current chapter name in subtitle
                         if (uiState.chapters.isNotEmpty()) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text(
-                                    text = uiState.chapters.getOrNull(uiState.currentChapterIndex)?.title ?: "",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                val progress = ((uiState.currentChapterIndex + 1).toFloat() / uiState.chapters.size * 100)
-                                Text(
-                                    text = "${"%.1f".format(progress)}%",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
+                            Text(
+                                text = uiState.chapters.getOrNull(uiState.currentChapterIndex)?.title ?: "",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
                 },
@@ -137,8 +124,16 @@ fun PlayerScreen(
                     IconButton(onClick = viewModel::toggleVoiceDialog) {
                         Icon(Icons.Default.RecordVoiceOver, contentDescription = "选择配音")
                     }
-                    IconButton(onClick = viewModel::toggleChapterList) {
-                        Icon(Icons.Default.List, contentDescription = "章节列表")
+                    // Chapter progress button - combines progress display and chapter list
+                    if (uiState.chapters.isNotEmpty()) {
+                        TextButton(onClick = viewModel::toggleChapterList) {
+                            val progress = ((uiState.currentChapterIndex + 1).toFloat() / uiState.chapters.size * 100)
+                            Text(
+                                text = "${uiState.currentChapterIndex + 1}/${uiState.chapters.size} · ${"%.1f".format(progress)}%",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 }
             )
@@ -498,10 +493,39 @@ private fun ChapterListDialog(
     onDismiss: () -> Unit
 ) {
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = (currentIndex - 3).coerceAtLeast(0))
+    val progress = ((currentIndex + 1).toFloat() / chapters.size.coerceAtLeast(1))
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("章节列表") },
+        title = {
+            Column {
+                Text("章节列表")
+                Spacer(modifier = Modifier.height(8.dp))
+                // Book progress bar
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "${currentIndex + 1} / ${chapters.size} 章",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "${"%.1f".format(progress * 100)}%",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.fillMaxWidth().height(4.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            }
+        },
         text = {
             LazyColumn(state = listState) {
                 itemsIndexed(chapters) { index, chapter ->
