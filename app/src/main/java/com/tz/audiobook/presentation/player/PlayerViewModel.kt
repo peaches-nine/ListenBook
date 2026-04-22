@@ -11,9 +11,11 @@ import com.tz.audiobook.domain.repository.BookRepository
 import com.tz.audiobook.domain.repository.ChapterRepository
 import com.tz.audiobook.domain.repository.ReadingProgressRepository
 import com.tz.audiobook.parser.Sentence
-import com.tz.audiobook.service.PlaybackState
+import com.tz.audiobook.parser.SentenceSplitter
+import com.tz.audiobook.service.AudioPipeline
 import com.tz.audiobook.service.PlaybackStateManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,9 +43,12 @@ data class PlayerUiState(
     val showVoiceDialog: Boolean = false,
     val showSleepDialog: Boolean = false,
     // Sleep timer
-    val sleepTimerMinutes: Int = 0,  // 0 means off
-    val sleepTimerRemaining: Int = 0, // seconds remaining
-    val sleepAtChapterEnd: Boolean = false
+    val sleepTimerMinutes: Int = 0,
+    val sleepTimerRemaining: Int = 0,
+    val sleepAtChapterEnd: Boolean = false,
+    // Pre-cache
+    val isPreCaching: Boolean = false,
+    val preCacheProgress: Float = 0f
 )
 
 @HiltViewModel
@@ -52,6 +57,7 @@ class PlayerViewModel @Inject constructor(
     private val chapterRepository: ChapterRepository,
     private val readingProgressRepository: ReadingProgressRepository,
     private val playbackStateManager: PlaybackStateManager,
+    private val audioPipeline: AudioPipeline,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -61,6 +67,7 @@ class PlayerViewModel @Inject constructor(
     val uiState: StateFlow<PlayerUiState> = _uiState.asStateFlow()
 
     private var sleepTimerJob: Job? = null
+    private var preCacheJob: Job? = null
 
     init {
         loadBook()
@@ -132,10 +139,6 @@ class PlayerViewModel @Inject constructor(
         saveProgress()
     }
 
-    fun togglePlayPause() {
-        // Don't toggle local state - it will be updated from Service
-    }
-
     fun nextChapter() {
         val state = _uiState.value
         if (state.currentChapterIndex < state.chapters.size - 1) {
@@ -185,7 +188,7 @@ class PlayerViewModel @Inject constructor(
         )
     }
 
-    // Sleep timer functions
+    // Sleep timer
     fun setSleepTimer(minutes: Int) {
         sleepTimerJob?.cancel()
         if (minutes <= 0) {
@@ -229,19 +232,61 @@ class PlayerViewModel @Inject constructor(
                 val remaining = _uiState.value.sleepTimerRemaining - 1
                 _uiState.value = _uiState.value.copy(sleepTimerRemaining = remaining)
                 if (remaining <= 0) {
-                    // Timer expired, pause playback
                     playbackStateManager.updateState { it.copy(isPlaying = false) }
                 }
             }
         }
     }
 
-    // Check if should sleep at chapter end (called when chapter changes)
     fun checkChapterEndSleep() {
         if (_uiState.value.sleepAtChapterEnd) {
             playbackStateManager.updateState { it.copy(isPlaying = false) }
             cancelSleepTimer()
         }
+    }
+
+    // Pre-cache entire book
+    fun preCacheBook() {
+        if (_uiState.value.isPreCaching) return
+
+        preCacheJob = viewModelScope.launch(Dispatchers.IO) {
+            _uiState.value = _uiState.value.copy(isPreCaching = true, preCacheProgress = 0f)
+
+            val chapters = _uiState.value.chapters
+            val voice = _uiState.value.voice
+
+            for ((index, chapter) in chapters.withIndex()) {
+                if (!_uiState.value.isPreCaching) break // Cancelled
+
+                try {
+                    val chapterWithContent = chapterRepository.getChapterWithContent(bookId, index)
+                    if (chapterWithContent != null && chapterWithContent.content.isNotEmpty()) {
+                        val sentences = SentenceSplitter.split(chapterWithContent.content)
+                        audioPipeline.preGenerateSentences(
+                            chapterId = chapterWithContent.id,
+                            sentences = sentences,
+                            startIndex = 0,
+                            count = sentences.size,
+                            voice = voice,
+                            speed = 1.0f
+                        )
+                    }
+                } catch (e: Exception) {
+                    // Skip failed chapters
+                }
+
+                _uiState.value = _uiState.value.copy(
+                    preCacheProgress = (index + 1).toFloat() / chapters.size
+                )
+            }
+
+            _uiState.value = _uiState.value.copy(isPreCaching = false, preCacheProgress = 1f)
+        }
+    }
+
+    fun cancelPreCache() {
+        preCacheJob?.cancel()
+        _uiState.value = _uiState.value.copy(isPreCaching = false, preCacheProgress = 0f)
     }
 
     private fun saveProgress() {

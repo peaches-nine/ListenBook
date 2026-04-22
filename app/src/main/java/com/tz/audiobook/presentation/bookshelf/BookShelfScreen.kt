@@ -58,12 +58,15 @@ fun BookShelfScreen(
     var isSearching by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
-    val filePicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
-        uri?.let {
-            val fileName = getFileName(context, uri)
-            viewModel.importBook(uri, fileName)
+    // Multi-file picker for batch import
+    val multiFilePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) {
+            uris.forEach { uri ->
+                val fileName = getFileName(context, uri)
+                viewModel.importBook(uri, fileName)
+            }
         }
     }
 
@@ -115,7 +118,7 @@ fun BookShelfScreen(
                             Icon(Icons.Default.Settings, contentDescription = "设置")
                         }
                         IconButton(onClick = {
-                            filePicker.launch(arrayOf("text/plain", "application/epub+zip", "*/*"))
+                            multiFilePicker.launch(arrayOf("text/plain", "application/epub+zip", "*/*"))
                         }) {
                             Icon(Icons.Default.Add, contentDescription = "导入书籍")
                         }
@@ -157,7 +160,7 @@ fun BookShelfScreen(
                     } else {
                         EmptyBookShelf(
                             onAddClick = {
-                                filePicker.launch(arrayOf("text/plain", "application/epub+zip", "*/*"))
+                                multiFilePicker.launch(arrayOf("text/plain", "application/epub+zip", "*/*"))
                             },
                             modifier = Modifier.align(Alignment.Center)
                         )

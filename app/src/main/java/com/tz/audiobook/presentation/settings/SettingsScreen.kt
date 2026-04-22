@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.*
@@ -21,6 +22,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 object SettingsPrefs {
     private const val PREFS_NAME = "audiobook_settings"
     private const val KEY_BG_PLAY = "background_play"
+    private const val KEY_DARK_MODE = "dark_mode" // "system", "light", "dark"
 
     fun isBackgroundPlayEnabled(context: Context): Boolean {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -31,6 +33,18 @@ object SettingsPrefs {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KEY_BG_PLAY, enabled)
+            .apply()
+    }
+
+    fun getDarkMode(context: Context): String {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_DARK_MODE, "system") ?: "system"
+    }
+
+    fun setDarkMode(context: Context, mode: String) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_DARK_MODE, mode)
             .apply()
     }
 }
@@ -102,6 +116,40 @@ fun SettingsScreen(
                             SettingsPrefs.setBackgroundPlayEnabled(context, it)
                         }
                     )
+                }
+                HorizontalDivider()
+            }
+
+            // Dark mode setting
+            item {
+                var darkMode by remember { mutableStateOf(SettingsPrefs.getDarkMode(context)) }
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.DarkMode,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(text = "深色模式", style = MaterialTheme.typography.bodyLarge)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val options = listOf("system" to "跟随系统", "light" to "浅色", "dark" to "深色")
+                        options.forEach { (value, label) ->
+                            FilterChip(
+                                selected = darkMode == value,
+                                onClick = {
+                                    darkMode = value
+                                    SettingsPrefs.setDarkMode(context, value)
+                                },
+                                label = { Text(label) }
+                            )
+                        }
+                    }
                 }
                 HorizontalDivider()
             }

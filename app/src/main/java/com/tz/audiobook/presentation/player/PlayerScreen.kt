@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -228,15 +229,19 @@ fun PlayerScreen(
             )
         }
 
-        // Dialogs
+        // Chapter list - full screen overlay
         if (uiState.showChapterList) {
-            ChapterListDialog(
+            ChapterListPage(
                 chapters = uiState.chapters,
                 currentIndex = uiState.currentChapterIndex,
+                isPreCaching = uiState.isPreCaching,
+                preCacheProgress = uiState.preCacheProgress,
                 onChapterClick = { index ->
                     viewModel.playChapter(index)
                     viewModel.hideDialogs()
                 },
+                onPreCacheClick = { viewModel.preCacheBook() },
+                onCancelPreCacheClick = { viewModel.cancelPreCache() },
                 onDismiss = viewModel::hideDialogs
             )
         }
@@ -485,73 +490,202 @@ private fun formatTime(seconds: Int): String {
     return if (min > 0) "${min}分${sec}秒" else "${sec}秒"
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ChapterListDialog(
+private fun ChapterListPage(
     chapters: List<com.tz.audiobook.domain.model.Chapter>,
     currentIndex: Int,
+    isPreCaching: Boolean,
+    preCacheProgress: Float,
     onChapterClick: (Int) -> Unit,
+    onPreCacheClick: () -> Unit,
+    onCancelPreCacheClick: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    var searchQuery by remember { mutableStateOf("") }
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = (currentIndex - 3).coerceAtLeast(0))
+    val coroutineScope = rememberCoroutineScope()
+
+    val filteredChapters = remember(chapters, searchQuery) {
+        if (searchQuery.isBlank()) chapters.mapIndexed { index, chapter -> index to chapter }
+        else chapters.mapIndexed { index, chapter -> index to chapter }
+            .filter { (_, chapter) -> chapter.title.contains(searchQuery, ignoreCase = true) }
+    }
+
     val progress = ((currentIndex + 1).toFloat() / chapters.size.coerceAtLeast(1))
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Column {
-                Text("章节列表")
-                Spacer(modifier = Modifier.height(8.dp))
-                // Book progress bar
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "${currentIndex + 1} / ${chapters.size} 章",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "${"%.1f".format(progress * 100)}%",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                LinearProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier.fillMaxWidth().height(4.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            }
-        },
-        text = {
-            LazyColumn(state = listState) {
-                itemsIndexed(chapters) { index, chapter ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onChapterClick(index) }
-                            .padding(vertical = 10.dp, horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (index == currentIndex) {
-                            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
-                            Spacer(modifier = Modifier.width(4.dp))
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.surface
+    ) {
+        Column {
+            // Top bar
+            TopAppBar(
+                title = {
+                    Column {
+                        Text("目录", style = MaterialTheme.typography.titleMedium)
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "${currentIndex + 1}/${chapters.size}章",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "${"%.1f".format(progress * 100)}%",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
                         }
-                        Text(
-                            text = chapter.title,
-                            style = if (index == currentIndex) MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.primary) else MaterialTheme.typography.bodyMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                    }
+                },
+                navigationIcon = {
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                    }
+                },
+                actions = {
+                    // Jump to current chapter
+                    IconButton(onClick = {
+                        coroutineScope.launch {
+                            listState.animateScrollToItem(currentIndex.coerceAtLeast(0))
+                        }
+                    }) {
+                        Icon(Icons.Default.MyLocation, contentDescription = "定位当前章节")
+                    }
+                }
+            )
+
+            // Progress bar
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier.fillMaxWidth().height(2.dp),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+
+            // Search bar
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                placeholder = { Text("搜索章节") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Icon(Icons.Default.Close, contentDescription = "清空")
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = MaterialTheme.shapes.medium
+            )
+
+            // Pre-cache section
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (isPreCaching) {
+                    Text(
+                        text = "缓存中 ${"%.0f".format(preCacheProgress * 100)}%",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                    TextButton(onClick = onCancelPreCacheClick) {
+                        Text("取消", style = MaterialTheme.typography.labelSmall)
+                    }
+                } else {
+                    TextButton(onClick = onPreCacheClick) {
+                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("预缓存全书", style = MaterialTheme.typography.labelMedium)
                     }
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } }
-    )
+            if (isPreCaching) {
+                LinearProgressIndicator(
+                    progress = { preCacheProgress },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(2.dp),
+                    color = MaterialTheme.colorScheme.secondary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            }
+
+            // Chapter list
+            if (filteredChapters.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "未找到匹配章节",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+                    items(filteredChapters.size) { idx ->
+                        val (index, chapter) = filteredChapters[idx]
+                        val isCurrent = index == currentIndex
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onChapterClick(index) }
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (isCurrent) {
+                                Icon(
+                                    Icons.Default.PlayArrow,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
+                            Text(
+                                text = chapter.title,
+                                style = if (isCurrent) MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.primary)
+                                else MaterialTheme.typography.bodyLarge,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (chapter.wordCount > 0) {
+                                Text(
+                                    text = formatWordCount(chapter.wordCount),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                )
+                            }
+                        }
+                        if (idx < filteredChapters.size - 1) {
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun formatWordCount(count: Int): String {
+    return when {
+        count >= 10000 -> "${count / 10000}万字"
+        count >= 1000 -> "${count / 1000}千字"
+        else -> "${count}字"
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
