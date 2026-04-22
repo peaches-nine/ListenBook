@@ -14,6 +14,8 @@ import com.tz.audiobook.parser.Sentence
 import com.tz.audiobook.service.PlaybackState
 import com.tz.audiobook.service.PlaybackStateManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,14 +31,19 @@ data class PlayerUiState(
     val sentences: List<Sentence> = emptyList(),
     val isPlaying: Boolean = false,
     val isLoading: Boolean = false,
-    val currentPosition: Long = 0,      // Current playback position within sentence
-    val sentenceDuration: Long = 0,    // Current sentence duration
+    val currentPosition: Long = 0,
+    val sentenceDuration: Long = 0,
     val speed: Float = 1.0f,
     val voice: String = EdgeTtsConstants.DEFAULT_VOICE.name,
     val cacheProgress: Float = 0f,
     val showChapterList: Boolean = false,
     val showSpeedDialog: Boolean = false,
-    val showVoiceDialog: Boolean = false
+    val showVoiceDialog: Boolean = false,
+    val showSleepDialog: Boolean = false,
+    // Sleep timer
+    val sleepTimerMinutes: Int = 0,  // 0 means off
+    val sleepTimerRemaining: Int = 0, // seconds remaining
+    val sleepAtChapterEnd: Boolean = false
 )
 
 @HiltViewModel
@@ -52,6 +59,8 @@ class PlayerViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(PlayerUiState())
     val uiState: StateFlow<PlayerUiState> = _uiState.asStateFlow()
+
+    private var sleepTimerJob: Job? = null
 
     init {
         loadBook()
@@ -125,7 +134,6 @@ class PlayerViewModel @Inject constructor(
 
     fun togglePlayPause() {
         // Don't toggle local state - it will be updated from Service
-        // Just return current state for UI to determine intent action
     }
 
     fun nextChapter() {
@@ -164,12 +172,76 @@ class PlayerViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(showVoiceDialog = !_uiState.value.showVoiceDialog)
     }
 
+    fun toggleSleepDialog() {
+        _uiState.value = _uiState.value.copy(showSleepDialog = !_uiState.value.showSleepDialog)
+    }
+
     fun hideDialogs() {
         _uiState.value = _uiState.value.copy(
             showChapterList = false,
             showSpeedDialog = false,
-            showVoiceDialog = false
+            showVoiceDialog = false,
+            showSleepDialog = false
         )
+    }
+
+    // Sleep timer functions
+    fun setSleepTimer(minutes: Int) {
+        sleepTimerJob?.cancel()
+        if (minutes <= 0) {
+            _uiState.value = _uiState.value.copy(
+                sleepTimerMinutes = 0,
+                sleepTimerRemaining = 0,
+                sleepAtChapterEnd = false
+            )
+            return
+        }
+        _uiState.value = _uiState.value.copy(
+            sleepTimerMinutes = minutes,
+            sleepTimerRemaining = minutes * 60,
+            sleepAtChapterEnd = false
+        )
+        startSleepCountdown()
+    }
+
+    fun setSleepAtChapterEnd() {
+        sleepTimerJob?.cancel()
+        _uiState.value = _uiState.value.copy(
+            sleepTimerMinutes = 0,
+            sleepTimerRemaining = 0,
+            sleepAtChapterEnd = true
+        )
+    }
+
+    fun cancelSleepTimer() {
+        sleepTimerJob?.cancel()
+        _uiState.value = _uiState.value.copy(
+            sleepTimerMinutes = 0,
+            sleepTimerRemaining = 0,
+            sleepAtChapterEnd = false
+        )
+    }
+
+    private fun startSleepCountdown() {
+        sleepTimerJob = viewModelScope.launch {
+            while (_uiState.value.sleepTimerRemaining > 0) {
+                delay(1000)
+                val remaining = _uiState.value.sleepTimerRemaining - 1
+                _uiState.value = _uiState.value.copy(sleepTimerRemaining = remaining)
+                if (remaining <= 0) {
+                    // Timer expired, pause playback
+                    playbackStateManager.updateState { it.copy(isPlaying = false) }
+                }
+            }
+        }
+    }
+
+    // Check if should sleep at chapter end (called when chapter changes)
+    fun checkChapterEndSleep() {
+        if (_uiState.value.sleepAtChapterEnd) {
+            playbackStateManager.updateState { it.copy(isPlaying = false) }
+            cancelSleepTimer()
+        }
     }
 
     private fun saveProgress() {

@@ -6,7 +6,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -20,7 +19,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -37,6 +35,8 @@ fun PlayerScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val sheetState = rememberModalBottomSheetState()
+    val scope = rememberCoroutineScope()
 
     // Track first play to avoid triggering on composition
     var hasTriggeredPlay by remember { mutableStateOf(false) }
@@ -65,6 +65,7 @@ fun PlayerScreen(
                         putExtra(PlaybackService.EXTRA_SPEED, uiState.speed)
                     }
                     context.startService(intent)
+                    viewModel.checkChapterEndSleep()
                 }
             }
             lastPlayedChapter = uiState.currentChapterIndex
@@ -72,7 +73,16 @@ fun PlayerScreen(
         }
     }
 
-    // Handle initial play trigger
+    // Handle sleep timer expiration
+    LaunchedEffect(uiState.sleepTimerRemaining) {
+        if (uiState.sleepTimerRemaining == 0 && uiState.sleepTimerMinutes > 0) {
+            val intent = Intent(context, PlaybackService::class.java).apply {
+                action = PlaybackService.ACTION_PAUSE
+            }
+            context.startService(intent)
+            viewModel.cancelSleepTimer()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -84,12 +94,28 @@ fun PlayerScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        if (uiState.chapters.isNotEmpty() && uiState.currentChapterIndex >= 0) {
-                            Text(
-                                text = uiState.chapters.getOrNull(uiState.currentChapterIndex)?.title ?: "",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                        // Book progress in TopBar
+                        if (uiState.chapters.isNotEmpty()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = uiState.chapters.getOrNull(uiState.currentChapterIndex)?.title ?: "",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                val progress = ((uiState.currentChapterIndex + 1).toFloat() / uiState.chapters.size * 100)
+                                Text(
+                                    text = "${"%.1f".format(progress)}%",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
                         }
                     }
                 },
@@ -99,8 +125,20 @@ fun PlayerScreen(
                     }
                 },
                 actions = {
+                    if (uiState.sleepTimerMinutes > 0 || uiState.sleepAtChapterEnd) {
+                        IconButton(onClick = viewModel::toggleSleepDialog) {
+                            Icon(
+                                Icons.Default.Timer,
+                                contentDescription = "睡眠定时器",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
                     IconButton(onClick = viewModel::toggleVoiceDialog) {
                         Icon(Icons.Default.RecordVoiceOver, contentDescription = "选择配音")
+                    }
+                    IconButton(onClick = viewModel::toggleChapterList) {
+                        Icon(Icons.Default.List, contentDescription = "章节列表")
                     }
                 }
             )
@@ -116,12 +154,10 @@ fun PlayerScreen(
                 sentences = uiState.sentences,
                 currentSentenceIndex = uiState.currentSentenceIndex,
                 onSentenceClick = { index ->
-                    // Stop current playback first before seeking
                     val pauseIntent = Intent(context, PlaybackService::class.java).apply {
                         action = PlaybackService.ACTION_PAUSE
                     }
                     context.startService(pauseIntent)
-                    // Then seek to the new sentence
                     val intent = Intent(context, PlaybackService::class.java).apply {
                         action = PlaybackService.ACTION_SEEK_TO_SENTENCE
                         putExtra(PlaybackService.EXTRA_SENTENCE_INDEX, index)
@@ -133,14 +169,13 @@ fun PlayerScreen(
                     .fillMaxWidth()
             )
 
-            // Sentence progress bar
+            // Sentence progress section
             if (uiState.sentences.isNotEmpty() && uiState.currentSentenceIndex >= 0) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 24.dp)
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
-                    // Sentence progress within chapter
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
@@ -150,17 +185,30 @@ fun PlayerScreen(
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        // Cache progress text
-                        if (uiState.cacheProgress < 1f) {
-                            Text(
-                                text = "缓存 ${((uiState.cacheProgress * 100).toInt())}%",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.secondary
-                            )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (uiState.sleepTimerRemaining > 0) {
+                                Text(
+                                    text = formatTime(uiState.sleepTimerRemaining),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            } else if (uiState.sleepAtChapterEnd) {
+                                Text(
+                                    text = "章末暂停",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                            if (uiState.cacheProgress < 1f && uiState.cacheProgress > 0f) {
+                                Text(
+                                    text = "缓存 ${((uiState.cacheProgress * 100).toInt())}%",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.secondary
+                                )
+                            }
                         }
                     }
                     Spacer(modifier = Modifier.height(4.dp))
-                    // Overall progress bar (sentence-based)
                     LinearProgressIndicator(
                         progress = { (uiState.currentSentenceIndex + 1).toFloat() / uiState.sentences.size.coerceAtLeast(1) },
                         modifier = Modifier.fillMaxWidth(),
@@ -168,18 +216,6 @@ fun PlayerScreen(
                         trackColor = MaterialTheme.colorScheme.surfaceVariant
                     )
                 }
-            }
-
-            // Cache progress indicator (for loading state)
-            if (uiState.cacheProgress < 1f && uiState.cacheProgress > 0f && uiState.sentences.isEmpty()) {
-                LinearProgressIndicator(
-                    progress = { uiState.cacheProgress },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp),
-                    color = MaterialTheme.colorScheme.secondary,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant
-                )
             }
 
             // Control bar
@@ -192,8 +228,8 @@ fun PlayerScreen(
                 },
                 onNextChapter = viewModel::nextChapter,
                 onPreviousChapter = viewModel::previousChapter,
-                onSpeedClick = viewModel::toggleSpeedDialog,
-                onListClick = viewModel::toggleChapterList
+                onSpeedClick = { viewModel.toggleSpeedDialog() },
+                onSleepClick = viewModel::toggleSleepDialog
             )
         }
 
@@ -210,30 +246,12 @@ fun PlayerScreen(
             )
         }
 
-        if (uiState.showSpeedDialog) {
-            SpeedDialog(
-                currentSpeed = uiState.speed,
-                onSpeedSelected = { speed ->
-                    viewModel.setSpeed(speed)
-                    viewModel.hideDialogs()
-                    // Seamless speed change - no restart needed
-                    val intent = Intent(context, PlaybackService::class.java).apply {
-                        action = PlaybackService.ACTION_SET_SPEED
-                        putExtra(PlaybackService.EXTRA_SPEED, speed)
-                    }
-                    context.startService(intent)
-                },
-                onDismiss = viewModel::hideDialogs
-            )
-        }
-
         if (uiState.showVoiceDialog) {
             VoiceDialog(
                 currentVoice = uiState.voice,
                 onVoiceSelected = { voice ->
                     viewModel.setVoice(voice)
                     viewModel.hideDialogs()
-                    // Pause first, then restart with new voice from current sentence
                     val pauseIntent = Intent(context, PlaybackService::class.java).apply {
                         action = PlaybackService.ACTION_PAUSE
                     }
@@ -252,6 +270,48 @@ fun PlayerScreen(
                 onDismiss = viewModel::hideDialogs
             )
         }
+
+        if (uiState.showSleepDialog) {
+            SleepTimerDialog(
+                currentMinutes = uiState.sleepTimerMinutes,
+                sleepAtChapterEnd = uiState.sleepAtChapterEnd,
+                onSetTimer = { minutes ->
+                    viewModel.setSleepTimer(minutes)
+                    viewModel.hideDialogs()
+                },
+                onSetChapterEnd = {
+                    viewModel.setSleepAtChapterEnd()
+                    viewModel.hideDialogs()
+                },
+                onCancel = {
+                    viewModel.cancelSleepTimer()
+                    viewModel.hideDialogs()
+                },
+                onDismiss = viewModel::hideDialogs
+            )
+        }
+
+        // Speed BottomSheet
+        if (uiState.showSpeedDialog) {
+            SpeedBottomSheet(
+                currentSpeed = uiState.speed,
+                onSpeedSelected = { speed ->
+                    viewModel.setSpeed(speed)
+                    val intent = Intent(context, PlaybackService::class.java).apply {
+                        action = PlaybackService.ACTION_SET_SPEED
+                        putExtra(PlaybackService.EXTRA_SPEED, speed)
+                    }
+                    context.startService(intent)
+                    scope.launch { sheetState.hide() }
+                    viewModel.hideDialogs()
+                },
+                onDismiss = {
+                    scope.launch { sheetState.hide() }
+                    viewModel.hideDialogs()
+                },
+                sheetState = sheetState
+            )
+        }
     }
 }
 
@@ -265,7 +325,6 @@ private fun SentenceList(
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
 
-    // Auto-scroll to current sentence
     LaunchedEffect(currentSentenceIndex) {
         if (currentSentenceIndex >= 0) {
             coroutineScope.launch {
@@ -354,7 +413,7 @@ private fun ControlBar(
     onNextChapter: () -> Unit,
     onPreviousChapter: () -> Unit,
     onSpeedClick: () -> Unit,
-    onListClick: () -> Unit
+    onSleepClick: () -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -398,9 +457,16 @@ private fun ControlBar(
                 Icon(Icons.Default.SkipNext, contentDescription = "下一章", modifier = Modifier.size(36.dp))
             }
 
-            // Chapter list
-            IconButton(onClick = onListClick) {
-                Icon(Icons.Default.List, contentDescription = "章节列表")
+            // Sleep timer
+            IconButton(onClick = onSleepClick) {
+                Icon(
+                    Icons.Default.Timer,
+                    contentDescription = "睡眠定时器",
+                    tint = if (uiState.sleepTimerMinutes > 0 || uiState.sleepAtChapterEnd)
+                        MaterialTheme.colorScheme.primary
+                    else
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
@@ -416,6 +482,12 @@ private fun startPlayback(context: Context, bookId: Long, chapterIndex: Int, sen
         putExtra(PlaybackService.EXTRA_SPEED, speed)
     }
     context.startService(intent)
+}
+
+private fun formatTime(seconds: Int): String {
+    val min = seconds / 60
+    val sec = seconds % 60
+    return if (min > 0) "${min}分${sec}秒" else "${sec}秒"
 }
 
 @Composable
@@ -458,25 +530,55 @@ private fun ChapterListDialog(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SpeedDialog(currentSpeed: Float, onSpeedSelected: (Float) -> Unit, onDismiss: () -> Unit) {
+private fun SpeedBottomSheet(
+    currentSpeed: Float,
+    onSpeedSelected: (Float) -> Unit,
+    onDismiss: () -> Unit,
+    sheetState: SheetState
+) {
     val speeds = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f, 3.0f)
-    AlertDialog(
+
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text("播放速度") },
-        text = {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+        sheetState = sheetState
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 32.dp)
+        ) {
+            Text(
+                text = "播放速度",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
                 speeds.forEach { speed ->
-                    FilterChip(selected = speed == currentSpeed, onClick = { onSpeedSelected(speed) }, label = { Text("${speed}x") })
+                    FilterChip(
+                        selected = speed == currentSpeed,
+                        onClick = { onSpeedSelected(speed) },
+                        label = { Text("${speed}x") },
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    )
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } }
-    )
+        }
+    }
 }
 
 @Composable
-private fun VoiceDialog(currentVoice: String, onVoiceSelected: (String) -> Unit, onDismiss: () -> Unit) {
+private fun VoiceDialog(
+    currentVoice: String,
+    onVoiceSelected: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("选择配音") },
@@ -485,15 +587,109 @@ private fun VoiceDialog(currentVoice: String, onVoiceSelected: (String) -> Unit,
                 items(EdgeTtsConstants.CHINESE_VOICES.size) { index ->
                     val voice = EdgeTtsConstants.CHINESE_VOICES[index]
                     Row(
-                        modifier = Modifier.fillMaxWidth().clickable { onVoiceSelected(voice.name) }.padding(vertical = 8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onVoiceSelected(voice.name) }
+                            .padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        RadioButton(selected = voice.name == currentVoice, onClick = { onVoiceSelected(voice.name) })
+                        RadioButton(
+                            selected = voice.name == currentVoice,
+                            onClick = { onVoiceSelected(voice.name) }
+                        )
                         Spacer(modifier = Modifier.width(8.dp))
                         Column {
-                            Text(text = "${voice.displayName} (${voice.gender})", style = MaterialTheme.typography.bodyMedium)
-                            Text(text = voice.style, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                text = "${voice.displayName} (${voice.gender})",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Text(
+                                text = voice.style,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } }
+    )
+}
+
+@Composable
+private fun SleepTimerDialog(
+    currentMinutes: Int,
+    sleepAtChapterEnd: Boolean,
+    onSetTimer: (Int) -> Unit,
+    onSetChapterEnd: () -> Unit,
+    onCancel: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val options = listOf(
+        15 to "15分钟后",
+        30 to "30分钟后",
+        45 to "45分钟后",
+        60 to "60分钟后"
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("睡眠定时器") },
+        text = {
+            Column {
+                options.forEach { (minutes, label) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSetTimer(minutes) }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = currentMinutes == minutes && !sleepAtChapterEnd,
+                            onClick = { onSetTimer(minutes) }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = label, style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSetChapterEnd() }
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = sleepAtChapterEnd,
+                        onClick = { onSetChapterEnd() }
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = "读完当前章节后暂停", style = MaterialTheme.typography.bodyLarge)
+                }
+                if (currentMinutes > 0 || sleepAtChapterEnd) {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onCancel() }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "关闭定时器",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.error
+                        )
                     }
                 }
             }

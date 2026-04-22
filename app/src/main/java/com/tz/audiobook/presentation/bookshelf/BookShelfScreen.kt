@@ -16,11 +16,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Audiotrack
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -51,6 +54,8 @@ fun BookShelfScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showDeleteDialog by remember { mutableLongStateOf(-1L) }
+    var searchQuery by remember { mutableStateOf("") }
+    var isSearching by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     val filePicker = rememberLauncherForActivityResult(
@@ -62,18 +67,58 @@ fun BookShelfScreen(
         }
     }
 
+    // Filter books by search query
+    val filteredBooks = remember(uiState.books, searchQuery) {
+        if (searchQuery.isBlank()) {
+            uiState.books
+        } else {
+            uiState.books.filter { bookWithProgress ->
+                bookWithProgress.book.title.contains(searchQuery, ignoreCase = true) ||
+                bookWithProgress.book.author?.contains(searchQuery, ignoreCase = true) == true
+            }
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("我的书架") },
-                actions = {
-                    IconButton(onClick = onSettingsClick) {
-                        Icon(Icons.Default.Settings, contentDescription = "设置")
+                title = {
+                    if (isSearching) {
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = { Text("搜索书名或作者") },
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color.Transparent,
+                                unfocusedBorderColor = Color.Transparent
+                            )
+                        )
+                    } else {
+                        Text("我的书架")
                     }
-                    IconButton(onClick = {
-                        filePicker.launch(arrayOf("text/plain", "application/epub+zip", "*/*"))
-                    }) {
-                        Icon(Icons.Default.Add, contentDescription = "导入书籍")
+                },
+                actions = {
+                    if (isSearching) {
+                        IconButton(onClick = {
+                            isSearching = false
+                            searchQuery = ""
+                        }) {
+                            Icon(Icons.Default.Close, contentDescription = "关闭搜索")
+                        }
+                    } else {
+                        IconButton(onClick = { isSearching = true }) {
+                            Icon(Icons.Default.Search, contentDescription = "搜索")
+                        }
+                        IconButton(onClick = onSettingsClick) {
+                            Icon(Icons.Default.Settings, contentDescription = "设置")
+                        }
+                        IconButton(onClick = {
+                            filePicker.launch(arrayOf("text/plain", "application/epub+zip", "*/*"))
+                        }) {
+                            Icon(Icons.Default.Add, contentDescription = "导入书籍")
+                        }
                     }
                 }
             )
@@ -90,13 +135,33 @@ fun BookShelfScreen(
                         modifier = Modifier.align(Alignment.Center)
                     )
                 }
-                uiState.books.isEmpty() -> {
-                    EmptyBookShelf(
-                        onAddClick = {
-                            filePicker.launch(arrayOf("text/plain", "application/epub+zip", "*/*"))
-                        },
-                        modifier = Modifier.align(Alignment.Center)
-                    )
+                filteredBooks.isEmpty() -> {
+                    if (searchQuery.isNotBlank()) {
+                        Column(
+                            modifier = Modifier.align(Alignment.Center).padding(32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = null,
+                                modifier = Modifier.size(64.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "未找到 \"$searchQuery\"",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        EmptyBookShelf(
+                            onAddClick = {
+                                filePicker.launch(arrayOf("text/plain", "application/epub+zip", "*/*"))
+                            },
+                            modifier = Modifier.align(Alignment.Center)
+                        )
+                    }
                 }
                 else -> {
                     LazyVerticalGrid(
@@ -106,7 +171,7 @@ fun BookShelfScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         items(
-                            items = uiState.books,
+                            items = filteredBooks,
                             key = { it.book.id }
                         ) { bookWithProgress ->
                             BookCard(
