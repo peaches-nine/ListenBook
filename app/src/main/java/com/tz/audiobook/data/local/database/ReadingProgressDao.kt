@@ -15,8 +15,14 @@ interface ReadingProgressDao {
     @Query("SELECT * FROM reading_progress")
     fun getAllProgress(): Flow<List<ReadingProgressEntity>>
 
+    @Query("SELECT * FROM reading_progress")
+    suspend fun getAllProgressList(): List<ReadingProgressEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveProgress(progress: ReadingProgressEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveAllProgress(progressList: List<ReadingProgressEntity>)
 
     @Query("DELETE FROM reading_progress WHERE bookId = :bookId")
     suspend fun deleteByBookId(bookId: Long)

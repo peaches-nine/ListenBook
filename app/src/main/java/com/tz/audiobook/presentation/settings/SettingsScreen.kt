@@ -1,18 +1,16 @@
 package com.tz.audiobook.presentation.settings
 
 import android.content.Context
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.DarkMode
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.FormatLineSpacing
-import androidx.compose.material.icons.filled.PlayCircle
-import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -128,6 +126,13 @@ object SettingsPrefs {
     fun isBookmarked(context: Context, bookId: Long, chapterIndex: Int, sentenceIndex: Int): Boolean {
         return getBookmarks(context, bookId).any { it.startsWith("$chapterIndex:$sentenceIndex:") }
     }
+
+    fun setBookmarks(context: Context, bookId: Long, bookmarks: Set<String>) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putStringSet(KEY_BOOKMARKS.format(bookId), bookmarks)
+            .apply()
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -142,6 +147,23 @@ fun SettingsScreen(
     var showClearAllDialog by remember { mutableStateOf(false) }
     var deleteBookId by remember { mutableLongStateOf(-1) }
     var deleteBookTitle by remember { mutableStateOf("") }
+
+    // File pickers for backup
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.exportData(context, uri)
+        }
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.importData(context, uri)
+        }
+    }
 
     LaunchedEffect(uiState) {
         // Refresh triggered by viewModel
@@ -394,6 +416,72 @@ fun SettingsScreen(
                     Text("清除全部缓存", color = MaterialTheme.colorScheme.error)
                 }
             }
+
+            // Backup section
+            item {
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CloudUpload,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(
+                        text = "数据备份",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+            }
+
+            item {
+                Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    Text(
+                        text = "导出阅读进度、设置、书签等数据",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault())
+                                    .format(java.util.Date())
+                                exportLauncher.launch("audiobook_backup_$timestamp.json")
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                Icons.Default.Upload,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("导出")
+                        }
+                        OutlinedButton(
+                            onClick = { importLauncher.launch(arrayOf("application/json")) },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                Icons.Default.Download,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("导入")
+                        }
+                    }
+                }
+            }
         }
 
         // Clear single book cache dialog
@@ -439,6 +527,38 @@ fun SettingsScreen(
                 dismissButton = {
                     TextButton(onClick = { showClearAllDialog = false }) {
                         Text("取消")
+                    }
+                }
+            )
+        }
+
+        // Export result dialog
+        uiState.exportMessage?.let { message ->
+            AlertDialog(
+                onDismissRequest = { viewModel.clearExportMessage() },
+                title = { Text("导出") },
+                text = { Text(message) },
+                confirmButton = {
+                    TextButton(onClick = { viewModel.clearExportMessage() }) {
+                        Text("确定")
+                    }
+                }
+            )
+        }
+
+        // Import result dialog
+        uiState.importMessage?.let { message ->
+            AlertDialog(
+                onDismissRequest = { viewModel.clearImportMessage() },
+                title = { Text("导入") },
+                text = { Text(message) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        viewModel.clearImportMessage()
+                        // Refresh settings after import
+                        bgPlayEnabled = SettingsPrefs.isBackgroundPlayEnabled(context)
+                    }) {
+                        Text("确定")
                     }
                 }
             )

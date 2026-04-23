@@ -25,4 +25,6 @@ interface ReadingProgressRepository {
     fun getProgress(bookId: Long): Flow<com.tz.audiobook.domain.model.ReadingProgress?>
     fun getAllProgress(): Flow<List<com.tz.audiobook.domain.model.ReadingProgress>>
     suspend fun saveProgress(progress: com.tz.audiobook.domain.model.ReadingProgress)
+    suspend fun getAllProgressSnapshot(): List<com.tz.audiobook.domain.model.ReadingProgress>
+    suspend fun saveAllProgress(progressList: List<com.tz.audiobook.domain.model.ReadingProgress>)
 }

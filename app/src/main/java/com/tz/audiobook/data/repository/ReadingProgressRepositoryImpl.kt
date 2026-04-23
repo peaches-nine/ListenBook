@@ -28,4 +28,12 @@ class ReadingProgressRepositoryImpl @Inject constructor(
     override suspend fun saveProgress(progress: ReadingProgress) {
         readingProgressDao.saveProgress(progress.toEntity())
     }
+
+    override suspend fun getAllProgressSnapshot(): List<ReadingProgress> {
+        return readingProgressDao.getAllProgressList().map { it.toDomain() }
+    }
+
+    override suspend fun saveAllProgress(progressList: List<ReadingProgress>) {
+        readingProgressDao.saveAllProgress(progressList.map { it.toEntity() })
+    }
 }
