@@ -8,6 +8,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -326,16 +328,18 @@ fun PlayerScreen(
                 chapters = uiState.chapters,
                 currentChapterIndex = uiState.currentChapterIndex,
                 onJumpToBookmark = { chapterIndex, sentenceIndex ->
-                    viewModel.playChapter(chapterIndex)
-                    val pauseIntent = Intent(context, PlaybackService::class.java).apply {
-                        action = PlaybackService.ACTION_PAUSE
-                    }
-                    context.startService(pauseIntent)
+                    // Directly send play request with correct chapter and sentence
                     val intent = Intent(context, PlaybackService::class.java).apply {
-                        action = PlaybackService.ACTION_SEEK_TO_SENTENCE
+                        action = PlaybackService.ACTION_PLAY
+                        putExtra(PlaybackService.EXTRA_BOOK_ID, uiState.book!!.id)
+                        putExtra(PlaybackService.EXTRA_CHAPTER_INDEX, chapterIndex)
                         putExtra(PlaybackService.EXTRA_SENTENCE_INDEX, sentenceIndex)
+                        putExtra(PlaybackService.EXTRA_VOICE, uiState.voice)
+                        putExtra(PlaybackService.EXTRA_SPEED, uiState.speed)
                     }
                     context.startService(intent)
+                    // Update ViewModel state to match
+                    viewModel.playChapter(chapterIndex)
                     viewModel.hideDialogs()
                 },
                 onDismiss = viewModel::hideDialogs
@@ -844,7 +848,7 @@ private fun formatWordCount(count: Int): String {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 private fun SpeedBottomSheet(
     currentSpeed: Float,
@@ -868,18 +872,18 @@ private fun SpeedBottomSheet(
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
             )
-            Row(
+            FlowRow(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 speeds.forEach { speed ->
                     FilterChip(
                         selected = speed == currentSpeed,
                         onClick = { onSpeedSelected(speed) },
-                        label = { Text("${speed}x") },
-                        modifier = Modifier.padding(horizontal = 4.dp)
+                        label = { Text("${speed}x") }
                     )
                 }
             }

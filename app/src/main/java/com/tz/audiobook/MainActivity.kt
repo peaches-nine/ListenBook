@@ -8,9 +8,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
@@ -27,14 +25,27 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            val darkMode = SettingsPrefs.getDarkMode(this)
+            // Observe dark mode setting changes
+            var darkMode by remember { mutableStateOf(SettingsPrefs.getDarkMode(this@MainActivity)) }
             val systemDarkTheme = isSystemInDarkTheme()
-            val useDarkTheme = remember(darkMode, systemDarkTheme) {
-                when (darkMode) {
-                    "dark" -> true
-                    "light" -> false
-                    else -> systemDarkTheme
+
+            DisposableEffect(Unit) {
+                val prefs = getSharedPreferences("audiobook_settings", MODE_PRIVATE)
+                val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+                    if (key == "dark_mode") {
+                        darkMode = SettingsPrefs.getDarkMode(this@MainActivity)
+                    }
                 }
+                prefs.registerOnSharedPreferenceChangeListener(listener)
+                onDispose {
+                    prefs.unregisterOnSharedPreferenceChangeListener(listener)
+                }
+            }
+
+            val useDarkTheme = when (darkMode) {
+                "dark" -> true
+                "light" -> false
+                else -> systemDarkTheme
             }
 
             AudioBookAppTheme(darkTheme = useDarkTheme) {
