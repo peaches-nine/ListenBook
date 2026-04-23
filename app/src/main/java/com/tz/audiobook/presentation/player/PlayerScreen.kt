@@ -6,6 +6,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -21,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -162,6 +164,7 @@ fun PlayerScreen(
                 sentences = uiState.sentences,
                 currentSentenceIndex = uiState.currentSentenceIndex,
                 currentChapterIndex = uiState.currentChapterIndex,
+                totalChapters = uiState.chapters.size,
                 bookId = uiState.book?.id ?: -1L,
                 onSentenceClick = { index ->
                     val pauseIntent = Intent(context, PlaybackService::class.java).apply {
@@ -174,6 +177,8 @@ fun PlayerScreen(
                     }
                     context.startService(intent)
                 },
+                onSwipeLeft = viewModel::nextChapter,
+                onSwipeRight = viewModel::previousChapter,
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
@@ -365,8 +370,11 @@ private fun SentenceList(
     sentences: List<com.tz.audiobook.parser.Sentence>,
     currentSentenceIndex: Int,
     currentChapterIndex: Int,
+    totalChapters: Int,
     bookId: Long,
     onSentenceClick: (Int) -> Unit,
+    onSwipeLeft: () -> Unit,
+    onSwipeRight: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
@@ -398,7 +406,15 @@ private fun SentenceList(
     } else {
         LazyColumn(
             state = listState,
-            modifier = modifier,
+            modifier = modifier.pointerInput(Unit) {
+                detectHorizontalDragGestures { _, dragAmount ->
+                    if (dragAmount < -150f) {
+                        onSwipeLeft()
+                    } else if (dragAmount > 150f) {
+                        onSwipeRight()
+                    }
+                }
+            },
             contentPadding = PaddingValues(vertical = 16.dp)
         ) {
             itemsIndexed(sentences) { index, sentence ->
