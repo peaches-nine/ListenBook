@@ -22,7 +22,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 object SettingsPrefs {
     private const val PREFS_NAME = "audiobook_settings"
     private const val KEY_BG_PLAY = "background_play"
-    private const val KEY_DARK_MODE = "dark_mode" // "system", "light", "dark"
+    private const val KEY_DARK_MODE = "dark_mode"
 
     fun isBackgroundPlayEnabled(context: Context): Boolean {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -31,9 +31,7 @@ object SettingsPrefs {
 
     fun setBackgroundPlayEnabled(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putBoolean(KEY_BG_PLAY, enabled)
-            .apply()
+            .edit().putBoolean(KEY_BG_PLAY, enabled).apply()
     }
 
     fun getDarkMode(context: Context): String {
@@ -43,37 +41,31 @@ object SettingsPrefs {
 
     fun setDarkMode(context: Context, mode: String) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putString(KEY_DARK_MODE, mode)
-            .apply()
+            .edit().putString(KEY_DARK_MODE, mode).apply()
     }
 
     private const val KEY_FAVORITE_VOICES = "favorite_voices"
-    private const val KEY_FONT_SIZE = "font_size" // 0 = small, 1 = medium, 2 = large
-    private const val KEY_LINE_HEIGHT = "line_height" // 0 = compact, 1 = normal, 2 = relaxed
+    private const val KEY_FONT_SIZE = "font_size"
+    private const val KEY_LINE_HEIGHT = "line_height"
 
     fun getFontSize(context: Context): Int {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getInt(KEY_FONT_SIZE, 1) // default: medium
+            .getInt(KEY_FONT_SIZE, 1)
     }
 
     fun setFontSize(context: Context, size: Int) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putInt(KEY_FONT_SIZE, size)
-            .apply()
+            .edit().putInt(KEY_FONT_SIZE, size).apply()
     }
 
     fun getLineHeight(context: Context): Int {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getInt(KEY_LINE_HEIGHT, 1) // default: normal
+            .getInt(KEY_LINE_HEIGHT, 1)
     }
 
     fun setLineHeight(context: Context, height: Int) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putInt(KEY_LINE_HEIGHT, height)
-            .apply()
+            .edit().putInt(KEY_LINE_HEIGHT, height).apply()
     }
 
     fun getFavoriteVoices(context: Context): Set<String> {
@@ -83,22 +75,16 @@ object SettingsPrefs {
 
     fun setFavoriteVoices(context: Context, voices: Set<String>) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putStringSet(KEY_FAVORITE_VOICES, voices)
-            .apply()
+            .edit().putStringSet(KEY_FAVORITE_VOICES, voices).apply()
     }
 
     fun toggleFavoriteVoice(context: Context, voiceName: String) {
         val favorites = getFavoriteVoices(context).toMutableSet()
-        if (voiceName in favorites) {
-            favorites.remove(voiceName)
-        } else {
-            favorites.add(voiceName)
-        }
+        if (voiceName in favorites) favorites.remove(voiceName) else favorites.add(voiceName)
         setFavoriteVoices(context, favorites)
     }
 
-    private const val KEY_BOOKMARKS = "bookmarks_%d" // bookId
+    private const val KEY_BOOKMARKS = "bookmarks_%d"
 
     fun getBookmarks(context: Context, bookId: Long): Set<String> {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -109,18 +95,14 @@ object SettingsPrefs {
         val bookmarks = getBookmarks(context, bookId).toMutableSet()
         bookmarks.add("$chapterIndex:$sentenceIndex:$textPreview")
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putStringSet(KEY_BOOKMARKS.format(bookId), bookmarks)
-            .apply()
+            .edit().putStringSet(KEY_BOOKMARKS.format(bookId), bookmarks).apply()
     }
 
     fun removeBookmark(context: Context, bookId: Long, chapterIndex: Int, sentenceIndex: Int) {
         val bookmarks = getBookmarks(context, bookId).toMutableSet()
         bookmarks.removeAll { it.startsWith("$chapterIndex:$sentenceIndex:") }
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putStringSet(KEY_BOOKMARKS.format(bookId), bookmarks)
-            .apply()
+            .edit().putStringSet(KEY_BOOKMARKS.format(bookId), bookmarks).apply()
     }
 
     fun isBookmarked(context: Context, bookId: Long, chapterIndex: Int, sentenceIndex: Int): Boolean {
@@ -129,35 +111,7 @@ object SettingsPrefs {
 
     fun setBookmarks(context: Context, bookId: Long, bookmarks: Set<String>) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putStringSet(KEY_BOOKMARKS.format(bookId), bookmarks)
-            .apply()
-    }
-
-    private const val KEY_REMINDER_HOUR = "reminder_hour" // -1 = disabled
-    private const val KEY_REMINDER_MINUTE = "reminder_minute"
-
-    fun getReminderHour(context: Context): Int {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getInt(KEY_REMINDER_HOUR, -1)
-    }
-
-    fun getReminderMinute(context: Context): Int {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getInt(KEY_REMINDER_MINUTE, 0)
-    }
-
-    fun setReminder(context: Context, hour: Int, minute: Int) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putInt(KEY_REMINDER_HOUR, hour)
-            .putInt(KEY_REMINDER_MINUTE, minute)
-            .apply()
-        if (hour >= 0) {
-            com.tz.audiobook.service.ReminderReceiver.scheduleReminder(context)
-        } else {
-            com.tz.audiobook.service.ReminderReceiver.cancelReminder(context)
-        }
+            .edit().putStringSet(KEY_BOOKMARKS.format(bookId), bookmarks).apply()
     }
 }
 
@@ -174,25 +128,16 @@ fun SettingsScreen(
     var deleteBookId by remember { mutableLongStateOf(-1) }
     var deleteBookTitle by remember { mutableStateOf("") }
 
-    // File pickers for backup
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri: Uri? ->
-        if (uri != null) {
-            viewModel.exportData(context, uri)
-        }
+        if (uri != null) viewModel.exportData(context, uri)
     }
 
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
-        if (uri != null) {
-            viewModel.importData(context, uri)
-        }
-    }
-
-    LaunchedEffect(uiState) {
-        // Refresh triggered by viewModel
+        if (uri != null) viewModel.importData(context, uri)
     }
 
     Scaffold(
@@ -208,11 +153,55 @@ fun SettingsScreen(
         }
     ) { padding ->
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
+            modifier = Modifier.fillMaxSize().padding(padding)
         ) {
-            // Background play toggle
+            // --- 外观设置 ---
+            item {
+                SettingSectionHeader(title = "外观")
+            }
+
+            // 深色模式
+            item {
+                var darkMode by remember { mutableStateOf(SettingsPrefs.getDarkMode(context)) }
+                SettingChipRow(
+                    icon = Icons.Default.DarkMode,
+                    title = "深色模式",
+                    options = listOf("system" to "跟随系统", "light" to "浅色", "dark" to "深色"),
+                    selected = darkMode,
+                    onSelect = { darkMode = it; SettingsPrefs.setDarkMode(context, it) }
+                )
+                HorizontalDivider()
+            }
+
+            // 字体大小
+            item {
+                var fontSize by remember { mutableStateOf(SettingsPrefs.getFontSize(context)) }
+                SettingChipRow(
+                    icon = Icons.Default.TextFields,
+                    title = "字体大小",
+                    options = listOf(0 to "小", 1 to "中", 2 to "大"),
+                    selected = fontSize,
+                    onSelect = { fontSize = it; SettingsPrefs.setFontSize(context, it) }
+                )
+                HorizontalDivider()
+            }
+
+            // 行间距
+            item {
+                var lineHeight by remember { mutableStateOf(SettingsPrefs.getLineHeight(context)) }
+                SettingChipRow(
+                    icon = Icons.Default.FormatLineSpacing,
+                    title = "行间距",
+                    options = listOf(0 to "紧凑", 1 to "标准", 2 to "宽松"),
+                    selected = lineHeight,
+                    onSelect = { lineHeight = it; SettingsPrefs.setLineHeight(context, it) }
+                )
+                HorizontalDivider()
+            }
+
+            // --- 播放设置 ---
+            item { SettingSectionHeader(title = "播放") }
+
             item {
                 Row(
                     modifier = Modifier
@@ -224,11 +213,7 @@ fun SettingsScreen(
                         .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.PlayCircle,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                    Icon(Icons.Default.PlayCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(text = "后台继续播放", style = MaterialTheme.typography.bodyLarge)
@@ -240,206 +225,29 @@ fun SettingsScreen(
                     }
                     Switch(
                         checked = bgPlayEnabled,
-                        onCheckedChange = {
-                            bgPlayEnabled = it
-                            SettingsPrefs.setBackgroundPlayEnabled(context, it)
-                        }
+                        onCheckedChange = { bgPlayEnabled = it; SettingsPrefs.setBackgroundPlayEnabled(context, it) }
                     )
                 }
                 HorizontalDivider()
             }
 
-            // Dark mode setting
-            item {
-                var darkMode by remember { mutableStateOf(SettingsPrefs.getDarkMode(context)) }
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.DarkMode,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Text(text = "深色模式", style = MaterialTheme.typography.bodyLarge)
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        val options = listOf("system" to "跟随系统", "light" to "浅色", "dark" to "深色")
-                        options.forEach { (value, label) ->
-                            FilterChip(
-                                selected = darkMode == value,
-                                onClick = {
-                                    darkMode = value
-                                    SettingsPrefs.setDarkMode(context, value)
-                                },
-                                label = { Text(label) }
-                            )
-                        }
-                    }
-                }
-                HorizontalDivider()
-            }
+            // --- 存储 ---
+            item { SettingSectionHeader(title = "存储") }
 
-            // Reminder setting
-            item {
-                var reminderHour by remember { mutableStateOf(SettingsPrefs.getReminderHour(context)) }
-                var reminderMinute by remember { mutableStateOf(SettingsPrefs.getReminderMinute(context)) }
-                var showTimePicker by remember { mutableStateOf(false) }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { showTimePicker = true }
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Notifications,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(text = "每日提醒", style = MaterialTheme.typography.bodyLarge)
-                        Text(
-                            text = if (reminderHour >= 0) "每天 %02d:%02d 提醒听书".format(reminderHour, reminderMinute)
-                            else "未开启提醒",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    if (reminderHour >= 0) {
-                        TextButton(onClick = {
-                            SettingsPrefs.setReminder(context, -1, 0)
-                            reminderHour = -1
-                        }) {
-                            Text("关闭", color = MaterialTheme.colorScheme.error)
-                        }
-                    }
-                }
-                HorizontalDivider()
-
-                // Time picker dialog
-                if (showTimePicker) {
-                    val timePickerState = rememberTimePickerState(
-                        initialHour = if (reminderHour >= 0) reminderHour else 20,
-                        initialMinute = reminderMinute
-                    )
-                    AlertDialog(
-                        onDismissRequest = { showTimePicker = false },
-                        title = { Text("设置提醒时间") },
-                        text = {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                TimePicker(state = timePickerState)
-                            }
-                        },
-                        confirmButton = {
-                            TextButton(onClick = {
-                                SettingsPrefs.setReminder(context, timePickerState.hour, timePickerState.minute)
-                                reminderHour = timePickerState.hour
-                                reminderMinute = timePickerState.minute
-                                showTimePicker = false
-                            }) {
-                                Text("确定")
-                            }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = { showTimePicker = false }) {
-                                Text("取消")
-                            }
-                        }
-                    )
-                }
-            }
-
-            // Reading settings
-            item {
-                var fontSize by remember { mutableStateOf(SettingsPrefs.getFontSize(context)) }
-                var lineHeight by remember { mutableStateOf(SettingsPrefs.getLineHeight(context)) }
-                Column(modifier = Modifier.padding(16.dp)) {
-                    // Font size
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.TextFields,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Text(text = "字体大小", style = MaterialTheme.typography.bodyLarge)
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        listOf(0 to "小", 1 to "中", 2 to "大").forEach { (value, label) ->
-                            FilterChip(
-                                selected = fontSize == value,
-                                onClick = {
-                                    fontSize = value
-                                    SettingsPrefs.setFontSize(context, value)
-                                },
-                                label = { Text(label) }
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    // Line height
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.FormatLineSpacing,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Text(text = "行间距", style = MaterialTheme.typography.bodyLarge)
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        listOf(0 to "紧凑", 1 to "标准", 2 to "宽松").forEach { (value, label) ->
-                            FilterChip(
-                                selected = lineHeight == value,
-                                onClick = {
-                                    lineHeight = value
-                                    SettingsPrefs.setLineHeight(context, value)
-                                },
-                                label = { Text(label) }
-                            )
-                        }
-                    }
-                }
-                HorizontalDivider()
-            }
-
-            // Cache section header
+            // Cache section header with total
             item {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Storage,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Text(
-                            text = "音频缓存",
-                            style = MaterialTheme.typography.titleMedium
-                        )
+                        Icon(Icons.Default.Storage, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("音频缓存", style = MaterialTheme.typography.bodyLarge)
                     }
                     Text(
-                        text = "共 ${formatSize(uiState.totalCacheSize)}",
+                        text = formatSize(uiState.totalCacheSize),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -452,199 +260,111 @@ fun SettingsScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable {
-                                deleteBookId = bookCache.bookId
-                                deleteBookTitle = bookCache.bookTitle
-                            }
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                            .clickable { deleteBookId = bookCache.bookId; deleteBookTitle = bookCache.bookTitle }
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = bookCache.bookTitle,
-                                style = MaterialTheme.typography.bodyLarge,
-                                maxLines = 1
-                            )
-                            Text(
-                                text = formatSize(bookCache.cacheSize),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Text(text = bookCache.bookTitle, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                            Text(text = formatSize(bookCache.cacheSize), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        IconButton(onClick = {
-                            deleteBookId = bookCache.bookId
-                            deleteBookTitle = bookCache.bookTitle
-                        }) {
-                            Icon(
-                                Icons.Default.Delete,
-                                contentDescription = "删除缓存",
-                                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
-                                modifier = Modifier.size(20.dp)
-                            )
+                        IconButton(onClick = { deleteBookId = bookCache.bookId; deleteBookTitle = bookCache.bookTitle }) {
+                            Icon(Icons.Default.Delete, contentDescription = "删除缓存", tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f), modifier = Modifier.size(20.dp))
                         }
                     }
                 }
             } else if (!uiState.isLoading) {
                 item {
-                    Text(
-                        text = "暂无缓存",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    )
+                    Text(text = "暂无缓存", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                 }
             }
 
-            // Clear all cache
             item {
                 HorizontalDivider()
                 TextButton(
                     onClick = { showClearAllDialog = true },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    Icon(
-                        Icons.Default.Delete,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.error
-                    )
+                    Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("清除全部缓存", color = MaterialTheme.colorScheme.error)
                 }
             }
 
-            // Backup section
+            // --- 数据 ---
+            item { SettingSectionHeader(title = "数据") }
+
+            // Export
             item {
-                Spacer(modifier = Modifier.height(16.dp))
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .clickable {
+                            val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(java.util.Date())
+                            exportLauncher.launch("audiobook_backup_$timestamp.json")
+                        }
+                        .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.CloudUpload,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                    Icon(Icons.Default.Upload, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.width(16.dp))
-                    Text(
-                        text = "数据备份",
-                        style = MaterialTheme.typography.titleMedium
-                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("导出数据", style = MaterialTheme.typography.bodyLarge)
+                        Text("导出阅读进度、设置、书签", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
+                HorizontalDivider()
             }
 
+            // Import
             item {
-                Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                    Text(
-                        text = "导出阅读进度、设置、书签等数据",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = {
-                                val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault())
-                                    .format(java.util.Date())
-                                exportLauncher.launch("audiobook_backup_$timestamp.json")
-                            },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(
-                                Icons.Default.Upload,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("导出")
-                        }
-                        OutlinedButton(
-                            onClick = { importLauncher.launch(arrayOf("application/json")) },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(
-                                Icons.Default.Download,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("导入")
-                        }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { importLauncher.launch(arrayOf("application/json")) }
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Download, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("导入数据", style = MaterialTheme.typography.bodyLarge)
+                        Text("从备份文件恢复数据", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
         }
 
-        // Clear single book cache dialog
+        // Dialogs
         if (deleteBookId >= 0) {
             AlertDialog(
                 onDismissRequest = { deleteBookId = -1 },
                 title = { Text("删除缓存") },
                 text = { Text("确定要清除《$deleteBookTitle》的音频缓存吗？") },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            viewModel.clearBookCache(deleteBookId)
-                            deleteBookId = -1
-                        }
-                    ) {
-                        Text("删除", color = MaterialTheme.colorScheme.error)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { deleteBookId = -1 }) {
-                        Text("取消")
-                    }
-                }
+                confirmButton = { TextButton(onClick = { viewModel.clearBookCache(deleteBookId); deleteBookId = -1 }) { Text("删除", color = MaterialTheme.colorScheme.error) } },
+                dismissButton = { TextButton(onClick = { deleteBookId = -1 }) { Text("取消") } }
             )
         }
 
-        // Clear all cache dialog
         if (showClearAllDialog) {
             AlertDialog(
                 onDismissRequest = { showClearAllDialog = false },
                 title = { Text("清除全部缓存") },
                 text = { Text("确定要清除所有音频缓存吗？下次播放时需要重新生成。") },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            viewModel.clearAllCache()
-                            showClearAllDialog = false
-                        }
-                    ) {
-                        Text("清除", color = MaterialTheme.colorScheme.error)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showClearAllDialog = false }) {
-                        Text("取消")
-                    }
-                }
+                confirmButton = { TextButton(onClick = { viewModel.clearAllCache(); showClearAllDialog = false }) { Text("清除", color = MaterialTheme.colorScheme.error) } },
+                dismissButton = { TextButton(onClick = { showClearAllDialog = false }) { Text("取消") } }
             )
         }
 
-        // Export result dialog
         uiState.exportMessage?.let { message ->
             AlertDialog(
                 onDismissRequest = { viewModel.clearExportMessage() },
                 title = { Text("导出") },
                 text = { Text(message) },
-                confirmButton = {
-                    TextButton(onClick = { viewModel.clearExportMessage() }) {
-                        Text("确定")
-                    }
-                }
+                confirmButton = { TextButton(onClick = { viewModel.clearExportMessage() }) { Text("确定") } }
             )
         }
 
-        // Import result dialog
         uiState.importMessage?.let { message ->
             AlertDialog(
                 onDismissRequest = { viewModel.clearImportMessage() },
@@ -653,13 +373,43 @@ fun SettingsScreen(
                 confirmButton = {
                     TextButton(onClick = {
                         viewModel.clearImportMessage()
-                        // Refresh settings after import
                         bgPlayEnabled = SettingsPrefs.isBackgroundPlayEnabled(context)
-                    }) {
-                        Text("确定")
-                    }
+                    }) { Text("确定") }
                 }
             )
+        }
+    }
+}
+
+@Composable
+private fun SettingSectionHeader(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+    )
+}
+
+@Composable
+private fun <T> SettingChipRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    options: List<Pair<T, String>>,
+    selected: T,
+    onSelect: (T) -> Unit
+) {
+    Column(modifier = Modifier.padding(16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.width(16.dp))
+            Text(text = title, style = MaterialTheme.typography.bodyLarge)
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            options.forEach { (value, label) ->
+                FilterChip(selected = value == selected, onClick = { onSelect(value) }, label = { Text(label) })
+            }
         }
     }
 }

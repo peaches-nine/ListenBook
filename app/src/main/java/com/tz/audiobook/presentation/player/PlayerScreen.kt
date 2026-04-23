@@ -387,6 +387,22 @@ private fun SentenceList(
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
 
+    // Reactive font size and line height
+    var fontSizeSetting by remember { mutableStateOf(SettingsPrefs.getFontSize(context)) }
+    var lineHeightSetting by remember { mutableStateOf(SettingsPrefs.getLineHeight(context)) }
+
+    DisposableEffect(Unit) {
+        val prefs = context.getSharedPreferences("audiobook_settings", Context.MODE_PRIVATE)
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            when (key) {
+                "font_size" -> fontSizeSetting = SettingsPrefs.getFontSize(context)
+                "line_height" -> lineHeightSetting = SettingsPrefs.getLineHeight(context)
+            }
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
     LaunchedEffect(currentSentenceIndex) {
         if (currentSentenceIndex >= 0) {
             coroutineScope.launch {
@@ -423,7 +439,10 @@ private fun SentenceList(
             },
             contentPadding = PaddingValues(vertical = 16.dp)
         ) {
-            itemsIndexed(sentences) { index, sentence ->
+            itemsIndexed(
+                sentences,
+                key = { index, _ -> "$index-$fontSizeSetting-$lineHeightSetting" }
+            ) { index, sentence ->
                 val isCurrent = index == currentSentenceIndex
                 val isPast = index < currentSentenceIndex
                 val isBookmarked = SettingsPrefs.isBookmarked(context, bookId, currentChapterIndex, index)
@@ -433,10 +452,10 @@ private fun SentenceList(
                     isCurrent = isCurrent,
                     isPast = isPast,
                     isBookmarked = isBookmarked,
+                    fontSizeSetting = fontSizeSetting,
+                    lineHeightSetting = lineHeightSetting,
                     onClick = { onSentenceClick(index) },
-                    onLongClick = {
-                        // Show context menu will be handled by expanded state
-                    },
+                    onLongClick = { },
                     onShare = {
                         val shareIntent = Intent(Intent.ACTION_SEND).apply {
                             type = "text/plain"
@@ -466,6 +485,8 @@ private fun SentenceItem(
     isCurrent: Boolean,
     isPast: Boolean,
     isBookmarked: Boolean,
+    fontSizeSetting: Int,
+    lineHeightSetting: Int,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onShare: () -> Unit,
@@ -473,8 +494,6 @@ private fun SentenceItem(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val fontSizeSetting = SettingsPrefs.getFontSize(context)
-    val lineHeightSetting = SettingsPrefs.getLineHeight(context)
     var showMenu by remember { mutableStateOf(false) }
 
     val fontSize = when (fontSizeSetting) {
