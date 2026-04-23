@@ -2,6 +2,7 @@ package com.tz.audiobook.presentation.player
 
 import android.content.Context
 import android.content.Intent
+import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -27,6 +28,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat.startActivity
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.tz.audiobook.data.remote.edgetts.EdgeTtsConstants
 import com.tz.audiobook.data.remote.edgetts.VoiceInfo
@@ -429,6 +431,16 @@ private fun SentenceList(
                     isBookmarked = isBookmarked,
                     onClick = { onSentenceClick(index) },
                     onLongClick = {
+                        // Show context menu will be handled by expanded state
+                    },
+                    onShare = {
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, sentence.text)
+                        }
+                        context.startActivity(Intent.createChooser(shareIntent, "分享句子"))
+                    },
+                    onToggleBookmark = {
                         if (isBookmarked) {
                             SettingsPrefs.removeBookmark(context, bookId, currentChapterIndex, index)
                         } else {
@@ -452,11 +464,14 @@ private fun SentenceItem(
     isBookmarked: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
+    onShare: () -> Unit,
+    onToggleBookmark: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val fontSizeSetting = SettingsPrefs.getFontSize(context)
     val lineHeightSetting = SettingsPrefs.getLineHeight(context)
+    var showMenu by remember { mutableStateOf(false) }
 
     val fontSize = when (fontSizeSetting) {
         0 -> 14.sp
@@ -487,7 +502,7 @@ private fun SentenceItem(
             .background(backgroundColor)
             .combinedClickable(
                 onClick = onClick,
-                onLongClick = onLongClick
+                onLongClick = { showMenu = true }
             )
             .padding(12.dp)
     ) {
@@ -507,6 +522,35 @@ private fun SentenceItem(
             color = textColor,
             lineHeight = lineHeight
         )
+
+        DropdownMenu(
+            expanded = showMenu,
+            onDismissRequest = { showMenu = false }
+        ) {
+            DropdownMenuItem(
+                text = { Text(if (isBookmarked) "移除书签" else "添加书签") },
+                onClick = {
+                    showMenu = false
+                    onToggleBookmark()
+                },
+                leadingIcon = {
+                    Icon(
+                        if (isBookmarked) Icons.Default.BookmarkRemove else Icons.Default.BookmarkAdd,
+                        contentDescription = null
+                    )
+                }
+            )
+            DropdownMenuItem(
+                text = { Text("分享") },
+                onClick = {
+                    showMenu = false
+                    onShare()
+                },
+                leadingIcon = {
+                    Icon(Icons.Default.Share, contentDescription = null)
+                }
+            )
+        }
     }
 }
 
