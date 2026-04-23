@@ -41,7 +41,10 @@ data class PlaybackState(
     val isLoading: Boolean = false,
     val bookId: Long = -1,
     val chapterTitle: String = "",
-    val bookTitle: String = ""
+    val bookTitle: String = "",
+    // Time estimation
+    val averageSentenceDuration: Long = 0L, // milliseconds
+    val estimatedRemainingTime: Long = 0L // milliseconds
 )
 
 @AndroidEntryPoint
@@ -84,6 +87,8 @@ class PlaybackService : Service() {
     private var positionJob: Job? = null
     private var pregenerateJob: Job? = null
     private var isTransitioning = false
+    private val sentenceDurations = mutableListOf<Long>()
+    private var currentSentenceStartTime: Long = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -191,6 +196,10 @@ class PlaybackService : Service() {
         // Stop current playback immediately when switching chapters
         exoPlayer?.stop()
 
+        // Reset time estimation for new chapter
+        sentenceDurations.clear()
+        currentSentenceStartTime = 0L
+
         stateManager.updateState {
             it.copy(
                 isLoading = true,
@@ -254,6 +263,13 @@ private fun playSentence(sentenceIndex: Int) {
 
         // Save progress immediately on sentence change
         saveProgressNow()
+
+        // Record previous sentence duration for time estimation
+        if (currentSentenceStartTime > 0) {
+            val elapsed = System.currentTimeMillis() - currentSentenceStartTime
+            sentenceDurations.add(elapsed)
+        }
+        currentSentenceStartTime = System.currentTimeMillis()
 
         val sentence = sentences[sentenceIndex]
         Log.d(TAG, "Playing sentence $sentenceIndex: ${sentence.text.take(30)}...")
@@ -413,7 +429,30 @@ private fun playSentence(sentenceIndex: Int) {
                     val position = player.currentPosition
                     val duration = player.duration.takeIf { it > 0 } ?: 1
                     stateManager.updatePosition(position)
+
+                    // Update time estimation
+                    updateTimeEstimation()
                 }
+            }
+        }
+    }
+
+    private fun updateTimeEstimation() {
+        val currentState = stateManager.playbackState.value
+        val currentIndex = currentState.currentSentenceIndex
+        val totalSentences = sentences.size
+
+        if (currentIndex >= 0 && totalSentences > 0 && sentenceDurations.isNotEmpty()) {
+            val avgDuration = sentenceDurations.average().toLong()
+            val remainingSentences = totalSentences - currentIndex - 1
+            val speed = currentState.speed
+            val estimatedRemaining = ((avgDuration * remainingSentences) / speed).toLong()
+
+            stateManager.updateState {
+                it.copy(
+                    averageSentenceDuration = avgDuration,
+                    estimatedRemainingTime = estimatedRemaining
+                )
             }
         }
     }

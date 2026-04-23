@@ -182,6 +182,14 @@ fun PlayerScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // Estimated remaining time
+                            if (uiState.estimatedRemainingTime > 0) {
+                                Text(
+                                    text = "剩余 ${formatDuration(uiState.estimatedRemainingTime)}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                             if (uiState.sleepTimerRemaining > 0) {
                                 Text(
                                     text = formatTime(uiState.sleepTimerRemaining),
@@ -488,6 +496,14 @@ private fun formatTime(seconds: Int): String {
     val min = seconds / 60
     val sec = seconds % 60
     return if (min > 0) "${min}分${sec}秒" else "${sec}秒"
+}
+
+private fun formatDuration(milliseconds: Long): String {
+    val seconds = (milliseconds / 1000).toInt()
+    if (seconds < 60) return "${seconds}秒"
+    val minutes = seconds / 60
+    val secs = seconds % 60
+    return if (secs > 0) "${minutes}分${secs}秒" else "${minutes}分钟"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -48,7 +48,9 @@ data class PlayerUiState(
     val sleepAtChapterEnd: Boolean = false,
     // Pre-cache
     val isPreCaching: Boolean = false,
-    val preCacheProgress: Float = 0f
+    val preCacheProgress: Float = 0f,
+    // Time estimation
+    val estimatedRemainingTime: Long = 0L // milliseconds
 )
 
 @HiltViewModel
@@ -109,7 +111,8 @@ class PlayerViewModel @Inject constructor(
                     currentSentenceIndex = state.currentSentenceIndex,
                     sentenceDuration = state.duration,
                     speed = state.speed,
-                    voice = state.voice
+                    voice = state.voice,
+                    estimatedRemainingTime = state.estimatedRemainingTime
                 )
             }
         }
