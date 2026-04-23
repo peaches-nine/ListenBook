@@ -322,8 +322,10 @@ private fun BookCard(
 
             if (progress != null) {
                 Spacer(modifier = Modifier.height(4.dp))
+                // Progress percentage based on chapter position
+                val progressPercent = ((progress.currentChapterIndex + 1).toFloat() / book.totalChapters.coerceAtLeast(1) * 100).toInt()
                 Text(
-                    text = "已听至第${progress.currentChapterIndex + 1}章",
+                    text = "已听至第${progress.currentChapterIndex + 1}章 (${progressPercent}%)",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary
                 )
