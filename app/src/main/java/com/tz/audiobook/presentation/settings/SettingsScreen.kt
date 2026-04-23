@@ -7,10 +7,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.FormatLineSpacing
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -49,6 +51,32 @@ object SettingsPrefs {
     }
 
     private const val KEY_FAVORITE_VOICES = "favorite_voices"
+    private const val KEY_FONT_SIZE = "font_size" // 0 = small, 1 = medium, 2 = large
+    private const val KEY_LINE_HEIGHT = "line_height" // 0 = compact, 1 = normal, 2 = relaxed
+
+    fun getFontSize(context: Context): Int {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getInt(KEY_FONT_SIZE, 1) // default: medium
+    }
+
+    fun setFontSize(context: Context, size: Int) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putInt(KEY_FONT_SIZE, size)
+            .apply()
+    }
+
+    fun getLineHeight(context: Context): Int {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getInt(KEY_LINE_HEIGHT, 1) // default: normal
+    }
+
+    fun setLineHeight(context: Context, height: Int) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putInt(KEY_LINE_HEIGHT, height)
+            .apply()
+    }
 
     fun getFavoriteVoices(context: Context): Set<String> {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -169,6 +197,68 @@ fun SettingsScreen(
                                 onClick = {
                                     darkMode = value
                                     SettingsPrefs.setDarkMode(context, value)
+                                },
+                                label = { Text(label) }
+                            )
+                        }
+                    }
+                }
+                HorizontalDivider()
+            }
+
+            // Reading settings
+            item {
+                var fontSize by remember { mutableStateOf(SettingsPrefs.getFontSize(context)) }
+                var lineHeight by remember { mutableStateOf(SettingsPrefs.getLineHeight(context)) }
+                Column(modifier = Modifier.padding(16.dp)) {
+                    // Font size
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.TextFields,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(text = "字体大小", style = MaterialTheme.typography.bodyLarge)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(0 to "小", 1 to "中", 2 to "大").forEach { (value, label) ->
+                            FilterChip(
+                                selected = fontSize == value,
+                                onClick = {
+                                    fontSize = value
+                                    SettingsPrefs.setFontSize(context, value)
+                                },
+                                label = { Text(label) }
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    // Line height
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.FormatLineSpacing,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(text = "行间距", style = MaterialTheme.typography.bodyLarge)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(0 to "紧凑", 1 to "标准", 2 to "宽松").forEach { (value, label) ->
+                            FilterChip(
+                                selected = lineHeight == value,
+                                onClick = {
+                                    lineHeight = value
+                                    SettingsPrefs.setLineHeight(context, value)
                                 },
                                 label = { Text(label) }
                             )

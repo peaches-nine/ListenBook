@@ -387,6 +387,20 @@ private fun SentenceItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val fontSizeSetting = SettingsPrefs.getFontSize(context)
+    val lineHeightSetting = SettingsPrefs.getLineHeight(context)
+
+    val fontSize = when (fontSizeSetting) {
+        0 -> 14.sp
+        2 -> 18.sp
+        else -> 16.sp
+    }
+    val lineHeight = when (lineHeightSetting) {
+        0 -> fontSize * 1.3f
+        2 -> fontSize * 1.8f
+        else -> fontSize * 1.5f
+    }
     val backgroundColor = when {
         isCurrent -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
         isPast -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
@@ -409,9 +423,9 @@ private fun SentenceItem(
     ) {
         Text(
             text = text,
-            style = MaterialTheme.typography.bodyLarge,
+            fontSize = fontSize,
             color = textColor,
-            lineHeight = 28.sp
+            lineHeight = lineHeight
         )
     }
 }
