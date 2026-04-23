@@ -133,6 +133,32 @@ object SettingsPrefs {
             .putStringSet(KEY_BOOKMARKS.format(bookId), bookmarks)
             .apply()
     }
+
+    private const val KEY_REMINDER_HOUR = "reminder_hour" // -1 = disabled
+    private const val KEY_REMINDER_MINUTE = "reminder_minute"
+
+    fun getReminderHour(context: Context): Int {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getInt(KEY_REMINDER_HOUR, -1)
+    }
+
+    fun getReminderMinute(context: Context): Int {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getInt(KEY_REMINDER_MINUTE, 0)
+    }
+
+    fun setReminder(context: Context, hour: Int, minute: Int) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putInt(KEY_REMINDER_HOUR, hour)
+            .putInt(KEY_REMINDER_MINUTE, minute)
+            .apply()
+        if (hour >= 0) {
+            com.tz.audiobook.service.ReminderReceiver.scheduleReminder(context)
+        } else {
+            com.tz.audiobook.service.ReminderReceiver.cancelReminder(context)
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -255,6 +281,78 @@ fun SettingsScreen(
                     }
                 }
                 HorizontalDivider()
+            }
+
+            // Reminder setting
+            item {
+                var reminderHour by remember { mutableStateOf(SettingsPrefs.getReminderHour(context)) }
+                var reminderMinute by remember { mutableStateOf(SettingsPrefs.getReminderMinute(context)) }
+                var showTimePicker by remember { mutableStateOf(false) }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showTimePicker = true }
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Notifications,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(text = "每日提醒", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            text = if (reminderHour >= 0) "每天 %02d:%02d 提醒听书".format(reminderHour, reminderMinute)
+                            else "未开启提醒",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (reminderHour >= 0) {
+                        TextButton(onClick = {
+                            SettingsPrefs.setReminder(context, -1, 0)
+                            reminderHour = -1
+                        }) {
+                            Text("关闭", color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+                HorizontalDivider()
+
+                // Time picker dialog
+                if (showTimePicker) {
+                    val timePickerState = rememberTimePickerState(
+                        initialHour = if (reminderHour >= 0) reminderHour else 20,
+                        initialMinute = reminderMinute
+                    )
+                    AlertDialog(
+                        onDismissRequest = { showTimePicker = false },
+                        title = { Text("设置提醒时间") },
+                        text = {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                TimePicker(state = timePickerState)
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                SettingsPrefs.setReminder(context, timePickerState.hour, timePickerState.minute)
+                                reminderHour = timePickerState.hour
+                                reminderMinute = timePickerState.minute
+                                showTimePicker = false
+                            }) {
+                                Text("确定")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showTimePicker = false }) {
+                                Text("取消")
+                            }
+                        }
+                    )
+                }
             }
 
             // Reading settings

@@ -35,6 +35,10 @@
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
 
+        <receiver
+            android:name=".service.ReminderReceiver"
+            android:exported="false" />
+
     </application>
 
 </manifest>
