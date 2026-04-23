@@ -12,6 +12,7 @@ import com.tz.audiobook.domain.repository.ChapterRepository
 import com.tz.audiobook.domain.repository.ReadingProgressRepository
 import com.tz.audiobook.parser.Sentence
 import com.tz.audiobook.parser.SentenceSplitter
+import com.tz.audiobook.presentation.settings.SettingsPrefs
 import com.tz.audiobook.service.AudioPipeline
 import com.tz.audiobook.service.PlaybackStateManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -42,6 +43,7 @@ data class PlayerUiState(
     val showSpeedDialog: Boolean = false,
     val showVoiceDialog: Boolean = false,
     val showSleepDialog: Boolean = false,
+    val showBookmarkList: Boolean = false,
     // Sleep timer
     val sleepTimerMinutes: Int = 0,
     val sleepTimerRemaining: Int = 0,
@@ -182,12 +184,17 @@ class PlayerViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(showSleepDialog = !_uiState.value.showSleepDialog)
     }
 
+    fun toggleBookmarkList() {
+        _uiState.value = _uiState.value.copy(showBookmarkList = !_uiState.value.showBookmarkList)
+    }
+
     fun hideDialogs() {
         _uiState.value = _uiState.value.copy(
             showChapterList = false,
             showSpeedDialog = false,
             showVoiceDialog = false,
-            showSleepDialog = false
+            showSleepDialog = false,
+            showBookmarkList = false
         )
     }
 

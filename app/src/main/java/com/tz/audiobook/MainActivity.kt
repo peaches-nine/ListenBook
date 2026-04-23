@@ -28,11 +28,12 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val darkMode = SettingsPrefs.getDarkMode(this)
-            val useDarkTheme = remember {
+            val systemDarkTheme = isSystemInDarkTheme()
+            val useDarkTheme = remember(darkMode, systemDarkTheme) {
                 when (darkMode) {
                     "dark" -> true
                     "light" -> false
-                    else -> isSystemInDarkTheme()
+                    else -> systemDarkTheme
                 }
             }
 

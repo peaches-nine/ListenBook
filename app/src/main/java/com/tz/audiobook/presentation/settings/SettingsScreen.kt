@@ -99,6 +99,35 @@ object SettingsPrefs {
         }
         setFavoriteVoices(context, favorites)
     }
+
+    private const val KEY_BOOKMARKS = "bookmarks_%d" // bookId
+
+    fun getBookmarks(context: Context, bookId: Long): Set<String> {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getStringSet(KEY_BOOKMARKS.format(bookId), emptySet()) ?: emptySet()
+    }
+
+    fun addBookmark(context: Context, bookId: Long, chapterIndex: Int, sentenceIndex: Int, textPreview: String) {
+        val bookmarks = getBookmarks(context, bookId).toMutableSet()
+        bookmarks.add("$chapterIndex:$sentenceIndex:$textPreview")
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putStringSet(KEY_BOOKMARKS.format(bookId), bookmarks)
+            .apply()
+    }
+
+    fun removeBookmark(context: Context, bookId: Long, chapterIndex: Int, sentenceIndex: Int) {
+        val bookmarks = getBookmarks(context, bookId).toMutableSet()
+        bookmarks.removeAll { it.startsWith("$chapterIndex:$sentenceIndex:") }
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putStringSet(KEY_BOOKMARKS.format(bookId), bookmarks)
+            .apply()
+    }
+
+    fun isBookmarked(context: Context, bookId: Long, chapterIndex: Int, sentenceIndex: Int): Boolean {
+        return getBookmarks(context, bookId).any { it.startsWith("$chapterIndex:$sentenceIndex:") }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

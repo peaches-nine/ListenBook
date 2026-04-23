@@ -2,8 +2,10 @@ package com.tz.audiobook.presentation.player
 
 import android.content.Context
 import android.content.Intent
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -127,6 +129,14 @@ fun PlayerScreen(
                     IconButton(onClick = viewModel::toggleVoiceDialog) {
                         Icon(Icons.Default.RecordVoiceOver, contentDescription = "选择配音")
                     }
+                    IconButton(onClick = viewModel::toggleBookmarkList) {
+                        Icon(
+                            Icons.Default.Bookmark,
+                            contentDescription = "书签",
+                            tint = if (uiState.showBookmarkList) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     // Chapter progress button - combines progress display and chapter list
                     if (uiState.chapters.isNotEmpty()) {
                         TextButton(onClick = viewModel::toggleChapterList) {
@@ -151,6 +161,8 @@ fun PlayerScreen(
             SentenceList(
                 sentences = uiState.sentences,
                 currentSentenceIndex = uiState.currentSentenceIndex,
+                currentChapterIndex = uiState.currentChapterIndex,
+                bookId = uiState.book?.id ?: -1L,
                 onSentenceClick = { index ->
                     val pauseIntent = Intent(context, PlaybackService::class.java).apply {
                         action = PlaybackService.ACTION_PAUSE
@@ -301,6 +313,28 @@ fun PlayerScreen(
             )
         }
 
+        if (uiState.showBookmarkList) {
+            BookmarkListDialog(
+                bookId = uiState.book?.id ?: -1L,
+                chapters = uiState.chapters,
+                currentChapterIndex = uiState.currentChapterIndex,
+                onJumpToBookmark = { chapterIndex, sentenceIndex ->
+                    viewModel.playChapter(chapterIndex)
+                    val pauseIntent = Intent(context, PlaybackService::class.java).apply {
+                        action = PlaybackService.ACTION_PAUSE
+                    }
+                    context.startService(pauseIntent)
+                    val intent = Intent(context, PlaybackService::class.java).apply {
+                        action = PlaybackService.ACTION_SEEK_TO_SENTENCE
+                        putExtra(PlaybackService.EXTRA_SENTENCE_INDEX, sentenceIndex)
+                    }
+                    context.startService(intent)
+                    viewModel.hideDialogs()
+                },
+                onDismiss = viewModel::hideDialogs
+            )
+        }
+
         // Speed BottomSheet
         if (uiState.showSpeedDialog) {
             SpeedBottomSheet(
@@ -325,15 +359,19 @@ fun PlayerScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SentenceList(
     sentences: List<com.tz.audiobook.parser.Sentence>,
     currentSentenceIndex: Int,
+    currentChapterIndex: Int,
+    bookId: Long,
     onSentenceClick: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     LaunchedEffect(currentSentenceIndex) {
         if (currentSentenceIndex >= 0) {
@@ -366,12 +404,22 @@ private fun SentenceList(
             itemsIndexed(sentences) { index, sentence ->
                 val isCurrent = index == currentSentenceIndex
                 val isPast = index < currentSentenceIndex
+                val isBookmarked = SettingsPrefs.isBookmarked(context, bookId, currentChapterIndex, index)
 
                 SentenceItem(
                     text = sentence.text,
                     isCurrent = isCurrent,
                     isPast = isPast,
+                    isBookmarked = isBookmarked,
                     onClick = { onSentenceClick(index) },
+                    onLongClick = {
+                        if (isBookmarked) {
+                            SettingsPrefs.removeBookmark(context, bookId, currentChapterIndex, index)
+                        } else {
+                            val preview = sentence.text.take(20).let { if (sentence.text.length > 20) "$it..." else it }
+                            SettingsPrefs.addBookmark(context, bookId, currentChapterIndex, index, preview)
+                        }
+                    },
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                 )
             }
@@ -379,12 +427,15 @@ private fun SentenceList(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SentenceItem(
     text: String,
     isCurrent: Boolean,
     isPast: Boolean,
+    isBookmarked: Boolean,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -418,9 +469,22 @@ private fun SentenceItem(
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.small)
             .background(backgroundColor)
-            .clickable(onClick = onClick)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
             .padding(12.dp)
     ) {
+        if (isBookmarked) {
+            Icon(
+                imageVector = Icons.Default.Bookmark,
+                contentDescription = "已加书签",
+                modifier = Modifier
+                    .size(14.dp)
+                    .align(Alignment.TopEnd),
+                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+            )
+        }
         Text(
             text = text,
             fontSize = fontSize,
@@ -964,6 +1028,140 @@ private fun SleepTimerDialog(
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.error
                         )
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } }
+    )
+}
+
+data class BookmarkItem(
+    val chapterIndex: Int,
+    val sentenceIndex: Int,
+    val chapterTitle: String,
+    val textPreview: String
+)
+
+@Composable
+private fun BookmarkListDialog(
+    bookId: Long,
+    chapters: List<com.tz.audiobook.domain.model.Chapter>,
+    currentChapterIndex: Int,
+    onJumpToBookmark: (Int, Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var bookmarks by remember { mutableStateOf(emptyList<BookmarkItem>()) }
+
+    LaunchedEffect(bookId) {
+        val rawBookmarks = SettingsPrefs.getBookmarks(context, bookId)
+        bookmarks = rawBookmarks.mapNotNull { raw ->
+            val parts = raw.split(":")
+            if (parts.size >= 3) {
+                val chapterIdx = parts[0].toIntOrNull() ?: return@mapNotNull null
+                val sentenceIdx = parts[1].toIntOrNull() ?: return@mapNotNull null
+                val preview = parts.drop(2).joinToString(":")
+                val chapterTitle = chapters.getOrNull(chapterIdx)?.title ?: "第${chapterIdx + 1}章"
+                BookmarkItem(chapterIdx, sentenceIdx, chapterTitle, preview)
+            } else null
+        }.sortedByDescending { it.chapterIndex * 10000 + it.sentenceIndex }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("书签") },
+        text = {
+            if (bookmarks.isEmpty()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        Icons.Default.BookmarkBorder,
+                        contentDescription = null,
+                        modifier = Modifier.size(48.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "暂无书签",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "长按句子添加书签",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
+                }
+            } else {
+                LazyColumn {
+                    items(bookmarks.size) { index ->
+                        val bookmark = bookmarks[index]
+                        val isCurrentChapter = bookmark.chapterIndex == currentChapterIndex
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onJumpToBookmark(bookmark.chapterIndex, bookmark.sentenceIndex) }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Bookmark,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = if (isCurrentChapter) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = bookmark.chapterTitle,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = if (isCurrentChapter) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = bookmark.textPreview,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            IconButton(
+                                onClick = {
+                                    SettingsPrefs.removeBookmark(context, bookId, bookmark.chapterIndex, bookmark.sentenceIndex)
+                                    val rawBookmarks = SettingsPrefs.getBookmarks(context, bookId)
+                                    bookmarks = rawBookmarks.mapNotNull { raw ->
+                                        val parts = raw.split(":")
+                                        if (parts.size >= 3) {
+                                            val chapterIdx = parts[0].toIntOrNull() ?: return@mapNotNull null
+                                            val sentenceIdx = parts[1].toIntOrNull() ?: return@mapNotNull null
+                                            val preview = parts.drop(2).joinToString(":")
+                                            val chapterTitle = chapters.getOrNull(chapterIdx)?.title ?: "第${chapterIdx + 1}章"
+                                            BookmarkItem(chapterIdx, sentenceIdx, chapterTitle, preview)
+                                        } else null
+                                    }.sortedByDescending { it.chapterIndex * 10000 + it.sentenceIndex }
+                                },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "删除书签",
+                                    modifier = Modifier.size(18.dp),
+                                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.6f)
+                                )
+                            }
+                        }
+                        if (index < bookmarks.size - 1) {
+                            HorizontalDivider(modifier = Modifier.padding(start = 32.dp))
+                        }
                     }
                 }
             }
