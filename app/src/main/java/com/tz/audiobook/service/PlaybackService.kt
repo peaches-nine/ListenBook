@@ -99,7 +99,7 @@ class PlaybackService : Service() {
                     .setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_SPEECH)
                     .setUsage(androidx.media3.common.C.USAGE_MEDIA)
                     .build(),
-                true
+                true // Handle audio focus automatically - will pause on calls
             )
         }
         setupPlayerListeners()
