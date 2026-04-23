@@ -25,6 +25,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.tz.audiobook.data.remote.edgetts.EdgeTtsConstants
+import com.tz.audiobook.data.remote.edgetts.VoiceInfo
+import com.tz.audiobook.presentation.settings.SettingsPrefs
 import com.tz.audiobook.service.PlaybackService
 import kotlinx.coroutines.launch
 
@@ -753,42 +755,126 @@ private fun VoiceDialog(
     onVoiceSelected: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
+    var favoriteVoices by remember { mutableStateOf(SettingsPrefs.getFavoriteVoices(context)) }
+
+    // Sort voices: favorites first, then the rest
+    val sortedVoices = remember(favoriteVoices) {
+        val favorites = EdgeTtsConstants.CHINESE_VOICES.filter { it.name in favoriteVoices }
+        val others = EdgeTtsConstants.CHINESE_VOICES.filter { it.name !in favoriteVoices }
+        favorites + others
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("选择配音") },
         text = {
             LazyColumn {
-                items(EdgeTtsConstants.CHINESE_VOICES.size) { index ->
-                    val voice = EdgeTtsConstants.CHINESE_VOICES[index]
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onVoiceSelected(voice.name) }
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = voice.name == currentVoice,
-                            onClick = { onVoiceSelected(voice.name) }
+                if (favoriteVoices.isNotEmpty() && favoriteVoices.size < EdgeTtsConstants.CHINESE_VOICES.size) {
+                    item {
+                        Text(
+                            text = "收藏",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(start = 16.dp, top = 4.dp, bottom = 4.dp)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = "${voice.displayName} (${voice.gender})",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Text(
-                                text = voice.style,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                    }
+                    items(sortedVoices.take(favoriteVoices.size).size) { idx ->
+                        val voice = sortedVoices[idx]
+                        VoiceItem(
+                            voice = voice,
+                            isCurrent = voice.name == currentVoice,
+                            isFavorite = voice.name in favoriteVoices,
+                            onSelect = { onVoiceSelected(voice.name) },
+                            onToggleFavorite = {
+                                SettingsPrefs.toggleFavoriteVoice(context, voice.name)
+                                favoriteVoices = SettingsPrefs.getFavoriteVoices(context)
+                            }
+                        )
+                    }
+                    item {
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                        Text(
+                            text = "全部音色",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 16.dp, top = 4.dp, bottom = 4.dp)
+                        )
+                    }
+                    items(sortedVoices.drop(favoriteVoices.size).size) { idx ->
+                        val voice = sortedVoices[favoriteVoices.size + idx]
+                        VoiceItem(
+                            voice = voice,
+                            isCurrent = voice.name == currentVoice,
+                            isFavorite = false,
+                            onSelect = { onVoiceSelected(voice.name) },
+                            onToggleFavorite = {
+                                SettingsPrefs.toggleFavoriteVoice(context, voice.name)
+                                favoriteVoices = SettingsPrefs.getFavoriteVoices(context)
+                            }
+                        )
+                    }
+                } else {
+                    items(sortedVoices.size) { idx ->
+                        val voice = sortedVoices[idx]
+                        VoiceItem(
+                            voice = voice,
+                            isCurrent = voice.name == currentVoice,
+                            isFavorite = voice.name in favoriteVoices,
+                            onSelect = { onVoiceSelected(voice.name) },
+                            onToggleFavorite = {
+                                SettingsPrefs.toggleFavoriteVoice(context, voice.name)
+                                favoriteVoices = SettingsPrefs.getFavoriteVoices(context)
+                            }
+                        )
                     }
                 }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } }
     )
+}
+
+@Composable
+private fun VoiceItem(
+    voice: VoiceInfo,
+    isCurrent: Boolean,
+    isFavorite: Boolean,
+    onSelect: () -> Unit,
+    onToggleFavorite: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onSelect() }
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(
+            selected = isCurrent,
+            onClick = { onSelect() }
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "${voice.displayName} (${voice.gender})",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
+                text = voice.style,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        IconButton(onClick = onToggleFavorite, modifier = Modifier.size(32.dp)) {
+            Icon(
+                imageVector = if (isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+                contentDescription = if (isFavorite) "取消收藏" else "收藏",
+                tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
 }
 
 @Composable

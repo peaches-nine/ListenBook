@@ -47,6 +47,30 @@ object SettingsPrefs {
             .putString(KEY_DARK_MODE, mode)
             .apply()
     }
+
+    private const val KEY_FAVORITE_VOICES = "favorite_voices"
+
+    fun getFavoriteVoices(context: Context): Set<String> {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getStringSet(KEY_FAVORITE_VOICES, emptySet()) ?: emptySet()
+    }
+
+    fun setFavoriteVoices(context: Context, voices: Set<String>) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putStringSet(KEY_FAVORITE_VOICES, voices)
+            .apply()
+    }
+
+    fun toggleFavoriteVoice(context: Context, voiceName: String) {
+        val favorites = getFavoriteVoices(context).toMutableSet()
+        if (voiceName in favorites) {
+            favorites.remove(voiceName)
+        } else {
+            favorites.add(voiceName)
+        }
+        setFavoriteVoices(context, favorites)
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
