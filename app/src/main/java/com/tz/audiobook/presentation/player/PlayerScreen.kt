@@ -2,15 +2,16 @@ package com.tz.audiobook.presentation.player
 
 import android.content.Context
 import android.content.Intent
-import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -30,18 +31,19 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat.startActivity
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.tz.audiobook.data.remote.edgetts.EdgeTtsConstants
 import com.tz.audiobook.data.remote.edgetts.VoiceInfo
 import com.tz.audiobook.presentation.settings.SettingsPrefs
 import com.tz.audiobook.service.PlaybackService
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerScreen(
     onBack: () -> Unit,
+    onSettings: () -> Unit = {},
     viewModel: PlayerViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -49,17 +51,36 @@ fun PlayerScreen(
     val sheetState = rememberModalBottomSheetState()
     val scope = rememberCoroutineScope()
 
-    // Track first play to avoid triggering on composition
+    // Fullscreen mode: auto-hide bars after 3s of playing
+    var isFullscreen by remember { mutableStateOf(false) }
+    var showBars by remember { mutableStateOf(true) }
+
+    // Auto-hide logic
+    LaunchedEffect(uiState.isPlaying, isFullscreen) {
+        if (uiState.isPlaying && !isFullscreen) {
+            delay(3000)
+            isFullscreen = true
+            showBars = false
+        }
+    }
+
+    // When paused, show bars
+    LaunchedEffect(uiState.isPlaying) {
+        if (!uiState.isPlaying) {
+            showBars = true
+            isFullscreen = false
+        }
+    }
+
+    // Track first play
     var hasTriggeredPlay by remember { mutableStateOf(false) }
     var lastPlayedChapter by remember { mutableIntStateOf(-1) }
     var lastPlayedSentence by remember { mutableIntStateOf(-1) }
 
-    // Trigger playback when chapter or sentence changes
     LaunchedEffect(uiState.currentChapterIndex, uiState.currentSentenceIndex) {
         if (uiState.book != null) {
             val chapterChanged = lastPlayedChapter != uiState.currentChapterIndex
             val sentenceChanged = lastPlayedSentence != uiState.currentSentenceIndex
-
             if (chapterChanged || (sentenceChanged && !hasTriggeredPlay)) {
                 if (!hasTriggeredPlay) {
                     startPlayback(context, uiState.book!!.id, uiState.currentChapterIndex, uiState.currentSentenceIndex, uiState.voice, uiState.speed)
@@ -84,288 +105,189 @@ fun PlayerScreen(
         }
     }
 
-    // Handle sleep timer expiration
     LaunchedEffect(uiState.sleepTimerRemaining) {
         if (uiState.sleepTimerRemaining == 0 && uiState.sleepTimerMinutes > 0) {
-            val intent = Intent(context, PlaybackService::class.java).apply {
-                action = PlaybackService.ACTION_PAUSE
-            }
-            context.startService(intent)
+            context.startService(Intent(context, PlaybackService::class.java).apply { action = PlaybackService.ACTION_PAUSE })
             viewModel.cancelSleepTimer()
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            text = uiState.book?.title ?: "",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        // Current chapter name in subtitle
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Top bar (animated)
+            AnimatedVisibility(visible = showBars, enter = fadeIn(), exit =fadeOut()) {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text(uiState.book?.title ?: "", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            if (uiState.chapters.isNotEmpty()) {
+                                Text(
+                                    uiState.chapters.getOrNull(uiState.currentChapterIndex)?.title ?: "",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
+                    },
+                    actions = {
+                        if (uiState.sleepTimerMinutes > 0 || uiState.sleepAtChapterEnd) {
+                            IconButton(onClick = viewModel::toggleSleepDialog) {
+                                Icon(Icons.Default.Timer, "睡眠定时器", tint = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                        IconButton(onClick = viewModel::toggleVoiceDialog) { Icon(Icons.Default.RecordVoiceOver, "选择配音") }
+                        IconButton(onClick = viewModel::toggleBookmarkList) {
+                            Icon(Icons.Default.Bookmark, "书签", tint = if (uiState.showBookmarkList) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                         if (uiState.chapters.isNotEmpty()) {
-                            Text(
-                                text = uiState.chapters.getOrNull(uiState.currentChapterIndex)?.title ?: "",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            TextButton(onClick = viewModel::toggleChapterList) {
+                                val progress = ((uiState.currentChapterIndex + 1).toFloat() / uiState.chapters.size * 100)
+                                Text("${uiState.currentChapterIndex + 1}/${uiState.chapters.size} · ${"%.1f".format(progress)}%", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                            }
                         }
+                        IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "设置") }
                     }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                },
-                actions = {
-                    if (uiState.sleepTimerMinutes > 0 || uiState.sleepAtChapterEnd) {
-                        IconButton(onClick = viewModel::toggleSleepDialog) {
-                            Icon(
-                                Icons.Default.Timer,
-                                contentDescription = "睡眠定时器",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                    IconButton(onClick = viewModel::toggleVoiceDialog) {
-                        Icon(Icons.Default.RecordVoiceOver, contentDescription = "选择配音")
-                    }
-                    IconButton(onClick = viewModel::toggleBookmarkList) {
-                        Icon(
-                            Icons.Default.Bookmark,
-                            contentDescription = "书签",
-                            tint = if (uiState.showBookmarkList) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    // Chapter progress button - combines progress display and chapter list
-                    if (uiState.chapters.isNotEmpty()) {
-                        TextButton(onClick = viewModel::toggleChapterList) {
-                            val progress = ((uiState.currentChapterIndex + 1).toFloat() / uiState.chapters.size * 100)
-                            Text(
-                                text = "${uiState.currentChapterIndex + 1}/${uiState.chapters.size} · ${"%.1f".format(progress)}%",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
+                )
+            }
+
+            // Pinned chapter title (small, always visible)
+            if (uiState.chapters.isNotEmpty() && uiState.chapters.getOrNull(uiState.currentChapterIndex) != null) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                ) {
+                    Text(
+                        text = uiState.chapters[uiState.currentChapterIndex].title,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                    )
                 }
-            )
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
-            // Sentence list with auto-scroll
+            }
+
+            // Sentence list
             SentenceList(
                 sentences = uiState.sentences,
                 currentSentenceIndex = uiState.currentSentenceIndex,
                 currentChapterIndex = uiState.currentChapterIndex,
                 totalChapters = uiState.chapters.size,
                 bookId = uiState.book?.id ?: -1L,
+                isFullscreen = isFullscreen,
+                onToggleBars = { showBars = !showBars; if (showBars) isFullscreen = false },
                 onSentenceClick = { index ->
-                    val pauseIntent = Intent(context, PlaybackService::class.java).apply {
-                        action = PlaybackService.ACTION_PAUSE
+                    if (!showBars) { showBars = true; isFullscreen = false }
+                    else {
+                        context.startService(Intent(context, PlaybackService::class.java).apply { action = PlaybackService.ACTION_PAUSE })
+                        context.startService(Intent(context, PlaybackService::class.java).apply {
+                            action = PlaybackService.ACTION_SEEK_TO_SENTENCE
+                            putExtra(PlaybackService.EXTRA_SENTENCE_INDEX, index)
+                        })
                     }
-                    context.startService(pauseIntent)
-                    val intent = Intent(context, PlaybackService::class.java).apply {
-                        action = PlaybackService.ACTION_SEEK_TO_SENTENCE
-                        putExtra(PlaybackService.EXTRA_SENTENCE_INDEX, index)
-                    }
-                    context.startService(intent)
                 },
                 onSwipeLeft = viewModel::nextChapter,
                 onSwipeRight = viewModel::previousChapter,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
+                modifier = Modifier.weight(1f).fillMaxWidth()
             )
 
-            // Sentence progress section
-            if (uiState.sentences.isNotEmpty() && uiState.currentSentenceIndex >= 0) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "第 ${uiState.currentSentenceIndex + 1} / ${uiState.sentences.size} 句",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            // Estimated remaining time
-                            if (uiState.estimatedRemainingTime > 0) {
-                                Text(
-                                    text = "剩余 ${formatDuration(uiState.estimatedRemainingTime)}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+            // Bottom area (animated)
+            AnimatedVisibility(visible = showBars, enter = fadeIn(), exit = fadeOut()) {
+                Column {
+                    if (uiState.sentences.isNotEmpty() && uiState.currentSentenceIndex >= 0) {
+                        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("第 ${uiState.currentSentenceIndex + 1} / ${uiState.sentences.size} 句", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    if (uiState.estimatedRemainingTime > 0) Text("剩余 ${formatDuration(uiState.estimatedRemainingTime)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    if (uiState.sleepTimerRemaining > 0) Text(formatTime(uiState.sleepTimerRemaining), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                                    else if (uiState.sleepAtChapterEnd) Text("章末暂停", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                                    if (uiState.cacheProgress < 1f && uiState.cacheProgress > 0f) Text("缓存 ${(uiState.cacheProgress * 100).toInt()}%", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                                }
                             }
-                            if (uiState.sleepTimerRemaining > 0) {
-                                Text(
-                                    text = formatTime(uiState.sleepTimerRemaining),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.error
-                                )
-                            } else if (uiState.sleepAtChapterEnd) {
-                                Text(
-                                    text = "章末暂停",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.error
-                                )
-                            }
-                            if (uiState.cacheProgress < 1f && uiState.cacheProgress > 0f) {
-                                Text(
-                                    text = "缓存 ${((uiState.cacheProgress * 100).toInt())}%",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.secondary
-                                )
-                            }
+                            Spacer(Modifier.height(4.dp))
+                            LinearProgressIndicator(
+                                progress = { (uiState.currentSentenceIndex + 1).toFloat() / uiState.sentences.size.coerceAtLeast(1) },
+                                modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.primary, trackColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
                         }
                     }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    LinearProgressIndicator(
-                        progress = { (uiState.currentSentenceIndex + 1).toFloat() / uiState.sentences.size.coerceAtLeast(1) },
-                        modifier = Modifier.fillMaxWidth(),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                    ControlBar(
+                        uiState = uiState,
+                        onPlayPause = {
+                            val actionType = if (uiState.isPlaying) PlaybackService.ACTION_PAUSE else PlaybackService.ACTION_RESUME
+                            context.startService(Intent(context, PlaybackService::class.java).apply { action = actionType })
+                        },
+                        onNextChapter = viewModel::nextChapter,
+                        onPreviousChapter = viewModel::previousChapter,
+                        onSpeedClick = viewModel::toggleSpeedDialog,
+                        onSleepClick = viewModel::toggleSleepDialog
                     )
                 }
             }
-
-            // Control bar
-            ControlBar(
-                uiState = uiState,
-                onPlayPause = {
-                    val playAction = if (uiState.isPlaying) PlaybackService.ACTION_PAUSE else PlaybackService.ACTION_RESUME
-                    val intent = Intent(context, PlaybackService::class.java).apply { action = playAction }
-                    context.startService(intent)
-                },
-                onNextChapter = viewModel::nextChapter,
-                onPreviousChapter = viewModel::previousChapter,
-                onSpeedClick = { viewModel.toggleSpeedDialog() },
-                onSleepClick = viewModel::toggleSleepDialog
-            )
         }
 
-        // Chapter list - full screen overlay
+        // Dialogs
         if (uiState.showChapterList) {
             ChapterListPage(
-                chapters = uiState.chapters,
-                currentIndex = uiState.currentChapterIndex,
-                isPreCaching = uiState.isPreCaching,
-                preCacheProgress = uiState.preCacheProgress,
-                onChapterClick = { index ->
-                    viewModel.playChapter(index)
-                    viewModel.hideDialogs()
-                },
-                onPreCacheClick = { viewModel.preCacheBook() },
-                onCancelPreCacheClick = { viewModel.cancelPreCache() },
+                chapters = uiState.chapters, currentIndex = uiState.currentChapterIndex,
+                isPreCaching = uiState.isPreCaching, preCacheProgress = uiState.preCacheProgress,
+                onChapterClick = { viewModel.playChapter(it); viewModel.hideDialogs() },
+                onPreCacheClick = viewModel::preCacheBook, onCancelPreCacheClick = viewModel::cancelPreCache,
                 onDismiss = viewModel::hideDialogs
             )
         }
-
         if (uiState.showVoiceDialog) {
-            VoiceDialog(
-                currentVoice = uiState.voice,
-                onVoiceSelected = { voice ->
-                    viewModel.setVoice(voice)
-                    viewModel.hideDialogs()
-                    val pauseIntent = Intent(context, PlaybackService::class.java).apply {
-                        action = PlaybackService.ACTION_PAUSE
-                    }
-                    context.startService(pauseIntent)
-                    val bookId = uiState.book?.id ?: return@VoiceDialog
-                    val intent = Intent(context, PlaybackService::class.java).apply {
+            VoiceDialog(uiState.voice, { v -> viewModel.setVoice(v); viewModel.hideDialogs()
+                context.startService(Intent(context, PlaybackService::class.java).apply { action = PlaybackService.ACTION_PAUSE })
+                uiState.book?.id?.let { bid ->
+                    context.startService(Intent(context, PlaybackService::class.java).apply {
                         action = PlaybackService.ACTION_PLAY
-                        putExtra(PlaybackService.EXTRA_BOOK_ID, bookId)
+                        putExtra(PlaybackService.EXTRA_BOOK_ID, bid)
                         putExtra(PlaybackService.EXTRA_CHAPTER_INDEX, uiState.currentChapterIndex)
                         putExtra(PlaybackService.EXTRA_SENTENCE_INDEX, uiState.currentSentenceIndex)
-                        putExtra(PlaybackService.EXTRA_VOICE, voice)
+                        putExtra(PlaybackService.EXTRA_VOICE, v)
                         putExtra(PlaybackService.EXTRA_SPEED, uiState.speed)
-                    }
-                    context.startService(intent)
-                },
-                onDismiss = viewModel::hideDialogs
-            )
+                    })
+                }
+            }, viewModel::hideDialogs)
         }
-
         if (uiState.showSleepDialog) {
-            SleepTimerDialog(
-                currentMinutes = uiState.sleepTimerMinutes,
-                sleepAtChapterEnd = uiState.sleepAtChapterEnd,
-                onSetTimer = { minutes ->
-                    viewModel.setSleepTimer(minutes)
-                    viewModel.hideDialogs()
-                },
-                onSetChapterEnd = {
-                    viewModel.setSleepAtChapterEnd()
-                    viewModel.hideDialogs()
-                },
-                onCancel = {
-                    viewModel.cancelSleepTimer()
-                    viewModel.hideDialogs()
-                },
-                onDismiss = viewModel::hideDialogs
-            )
+            SleepTimerDialog(uiState.sleepTimerMinutes, uiState.sleepAtChapterEnd,
+                { viewModel.setSleepTimer(it); viewModel.hideDialogs() },
+                { viewModel.setSleepAtChapterEnd(); viewModel.hideDialogs() },
+                { viewModel.cancelSleepTimer(); viewModel.hideDialogs() }, viewModel::hideDialogs)
         }
-
         if (uiState.showBookmarkList) {
             BookmarkListDialog(
-                bookId = uiState.book?.id ?: -1L,
-                chapters = uiState.chapters,
+                bookId = uiState.book?.id ?: -1L, chapters = uiState.chapters,
                 currentChapterIndex = uiState.currentChapterIndex,
-                onJumpToBookmark = { chapterIndex, sentenceIndex ->
-                    // Directly send play request with correct chapter and sentence
-                    val intent = Intent(context, PlaybackService::class.java).apply {
+                onJumpToBookmark = { ci, si ->
+                    context.startService(Intent(context, PlaybackService::class.java).apply {
                         action = PlaybackService.ACTION_PLAY
                         putExtra(PlaybackService.EXTRA_BOOK_ID, uiState.book!!.id)
-                        putExtra(PlaybackService.EXTRA_CHAPTER_INDEX, chapterIndex)
-                        putExtra(PlaybackService.EXTRA_SENTENCE_INDEX, sentenceIndex)
+                        putExtra(PlaybackService.EXTRA_CHAPTER_INDEX, ci)
+                        putExtra(PlaybackService.EXTRA_SENTENCE_INDEX, si)
                         putExtra(PlaybackService.EXTRA_VOICE, uiState.voice)
                         putExtra(PlaybackService.EXTRA_SPEED, uiState.speed)
-                    }
-                    context.startService(intent)
-                    // Update ViewModel state to match
-                    viewModel.playChapter(chapterIndex)
-                    viewModel.hideDialogs()
-                },
-                onDismiss = viewModel::hideDialogs
+                    })
+                    viewModel.playChapter(ci); viewModel.hideDialogs()
+                }, onDismiss = viewModel::hideDialogs
             )
         }
-
-        // Speed BottomSheet
         if (uiState.showSpeedDialog) {
-            SpeedBottomSheet(
-                currentSpeed = uiState.speed,
-                onSpeedSelected = { speed ->
-                    viewModel.setSpeed(speed)
-                    val intent = Intent(context, PlaybackService::class.java).apply {
-                        action = PlaybackService.ACTION_SET_SPEED
-                        putExtra(PlaybackService.EXTRA_SPEED, speed)
-                    }
-                    context.startService(intent)
-                    scope.launch { sheetState.hide() }
-                    viewModel.hideDialogs()
-                },
-                onDismiss = {
-                    scope.launch { sheetState.hide() }
-                    viewModel.hideDialogs()
-                },
-                sheetState = sheetState
-            )
+            SpeedBottomSheet(uiState.speed, { s ->
+                viewModel.setSpeed(s)
+                context.startService(Intent(context, PlaybackService::class.java).apply {
+                    action = PlaybackService.ACTION_SET_SPEED
+                    putExtra(PlaybackService.EXTRA_SPEED, s)
+                })
+                scope.launch { sheetState.hide() }; viewModel.hideDialogs()
+            }, { scope.launch { sheetState.hide() }; viewModel.hideDialogs() }, sheetState)
         }
     }
 }
@@ -378,6 +300,8 @@ private fun SentenceList(
     currentChapterIndex: Int,
     totalChapters: Int,
     bookId: Long,
+    isFullscreen: Boolean,
+    onToggleBars: () -> Unit,
     onSentenceClick: (Int) -> Unit,
     onSwipeLeft: () -> Unit,
     onSwipeRight: () -> Unit,
@@ -387,16 +311,15 @@ private fun SentenceList(
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
 
-    // Reactive font size and line height
-    var fontSizeSetting by remember { mutableStateOf(SettingsPrefs.getFontSize(context)) }
-    var lineHeightSetting by remember { mutableStateOf(SettingsPrefs.getLineHeight(context)) }
+    var fontSizeSp by remember { mutableIntStateOf(SettingsPrefs.getFontSizeSp(context)) }
+    var lineHeightMult by remember { mutableFloatStateOf(SettingsPrefs.getLineHeightMult(context)) }
 
     DisposableEffect(Unit) {
         val prefs = context.getSharedPreferences("audiobook_settings", Context.MODE_PRIVATE)
         val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             when (key) {
-                "font_size" -> fontSizeSetting = SettingsPrefs.getFontSize(context)
-                "line_height" -> lineHeightSetting = SettingsPrefs.getLineHeight(context)
+                "font_size_sp" -> fontSizeSp = SettingsPrefs.getFontSizeSp(context)
+                "line_height_mult_x10" -> lineHeightMult = SettingsPrefs.getLineHeightMult(context)
             }
         }
         prefs.registerOnSharedPreferenceChangeListener(listener)
@@ -405,71 +328,38 @@ private fun SentenceList(
 
     LaunchedEffect(currentSentenceIndex) {
         if (currentSentenceIndex >= 0) {
-            coroutineScope.launch {
-                listState.animateScrollToItem(
-                    index = currentSentenceIndex.coerceAtLeast(0),
-                    scrollOffset = -200
-                )
-            }
+            coroutineScope.launch { listState.animateScrollToItem(currentSentenceIndex.coerceAtLeast(0), -200) }
         }
     }
 
     if (sentences.isEmpty()) {
-        Box(
-            modifier = modifier,
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "点击播放按钮开始",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+        Box(modifier = modifier, contentAlignment = Alignment.Center) {
+            Text("点击播放按钮开始", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     } else {
         LazyColumn(
             state = listState,
             modifier = modifier.pointerInput(Unit) {
-                detectHorizontalDragGestures { _, dragAmount ->
-                    if (dragAmount < -150f) {
-                        onSwipeLeft()
-                    } else if (dragAmount > 150f) {
-                        onSwipeRight()
-                    }
-                }
+                detectHorizontalDragGestures { _, drag -> if (drag < -150f) onSwipeLeft() else if (drag > 150f) onSwipeRight() }
             },
             contentPadding = PaddingValues(vertical = 16.dp)
         ) {
-            itemsIndexed(
-                sentences,
-                key = { index, _ -> "$index-$fontSizeSetting-$lineHeightSetting" }
-            ) { index, sentence ->
+            itemsIndexed(sentences, key = { i, _ -> "$i-$fontSizeSp-$lineHeightMult" }) { index, sentence ->
                 val isCurrent = index == currentSentenceIndex
                 val isPast = index < currentSentenceIndex
                 val isBookmarked = SettingsPrefs.isBookmarked(context, bookId, currentChapterIndex, index)
 
                 SentenceItem(
-                    text = sentence.text,
-                    isCurrent = isCurrent,
-                    isPast = isPast,
-                    isBookmarked = isBookmarked,
-                    fontSizeSetting = fontSizeSetting,
-                    lineHeightSetting = lineHeightSetting,
+                    text = sentence.text, isCurrent = isCurrent, isPast = isPast, isBookmarked = isBookmarked,
+                    fontSizeSp = fontSizeSp, lineHeightMult = lineHeightMult,
                     onClick = { onSentenceClick(index) },
-                    onLongClick = { },
+                    onLongClick = { /* context menu handled inside */ },
                     onShare = {
-                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, sentence.text)
-                        }
-                        context.startActivity(Intent.createChooser(shareIntent, "分享句子"))
+                        context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, sentence.text) }, "分享句子"))
                     },
                     onToggleBookmark = {
-                        if (isBookmarked) {
-                            SettingsPrefs.removeBookmark(context, bookId, currentChapterIndex, index)
-                        } else {
-                            val preview = sentence.text.take(20).let { if (sentence.text.length > 20) "$it..." else it }
-                            SettingsPrefs.addBookmark(context, bookId, currentChapterIndex, index, preview)
-                        }
+                        if (isBookmarked) SettingsPrefs.removeBookmark(context, bookId, currentChapterIndex, index)
+                        else SettingsPrefs.addBookmark(context, bookId, currentChapterIndex, index, sentence.text.take(20).let { if (sentence.text.length > 20) "$it..." else it })
                     },
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                 )
@@ -481,37 +371,21 @@ private fun SentenceList(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SentenceItem(
-    text: String,
-    isCurrent: Boolean,
-    isPast: Boolean,
-    isBookmarked: Boolean,
-    fontSizeSetting: Int,
-    lineHeightSetting: Int,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit,
-    onShare: () -> Unit,
-    onToggleBookmark: () -> Unit,
+    text: String, isCurrent: Boolean, isPast: Boolean, isBookmarked: Boolean,
+    fontSizeSp: Int, lineHeightMult: Float,
+    onClick: () -> Unit, onLongClick: () -> Unit, onShare: () -> Unit, onToggleBookmark: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     var showMenu by remember { mutableStateOf(false) }
 
-    val fontSize = when (fontSizeSetting) {
-        0 -> 14.sp
-        2 -> 18.sp
-        else -> 16.sp
-    }
-    val lineHeight = when (lineHeightSetting) {
-        0 -> fontSize * 1.3f
-        2 -> fontSize * 1.8f
-        else -> fontSize * 1.5f
-    }
-    val backgroundColor = when {
+    val fontSize = fontSizeSp.sp
+    val lineHeight = fontSize * lineHeightMult
+    val bgColor = when {
         isCurrent -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
         isPast -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
         else -> Color.Transparent
     }
-
     val textColor = when {
         isCurrent -> MaterialTheme.colorScheme.primary
         isPast -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
@@ -519,736 +393,155 @@ private fun SentenceItem(
     }
 
     Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.small)
-            .background(backgroundColor)
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = { showMenu = true }
-            )
+        modifier = modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).background(bgColor)
+            .combinedClickable(onClick = onClick, onLongClick = { showMenu = true })
             .padding(12.dp)
     ) {
-        if (isBookmarked) {
-            Icon(
-                imageVector = Icons.Default.Bookmark,
-                contentDescription = "已加书签",
-                modifier = Modifier
-                    .size(14.dp)
-                    .align(Alignment.TopEnd),
-                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
-            )
-        }
-        Text(
-            text = text,
-            fontSize = fontSize,
-            color = textColor,
-            lineHeight = lineHeight
-        )
-
-        DropdownMenu(
-            expanded = showMenu,
-            onDismissRequest = { showMenu = false }
-        ) {
-            DropdownMenuItem(
-                text = { Text(if (isBookmarked) "移除书签" else "添加书签") },
-                onClick = {
-                    showMenu = false
-                    onToggleBookmark()
-                },
-                leadingIcon = {
-                    Icon(
-                        if (isBookmarked) Icons.Default.BookmarkRemove else Icons.Default.BookmarkAdd,
-                        contentDescription = null
-                    )
-                }
-            )
-            DropdownMenuItem(
-                text = { Text("分享") },
-                onClick = {
-                    showMenu = false
-                    onShare()
-                },
-                leadingIcon = {
-                    Icon(Icons.Default.Share, contentDescription = null)
-                }
-            )
+        if (isBookmarked) Icon(Icons.Default.Bookmark, "已加书签", modifier = Modifier.size(14.dp).align(Alignment.TopEnd), tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f))
+        Text(text, fontSize = fontSize, color = textColor, lineHeight = lineHeight)
+        DropdownMenu(showMenu, { showMenu = false }) {
+            DropdownMenuItem(text = { Text(if (isBookmarked) "移除书签" else "添加书签") }, onClick = { showMenu = false; onToggleBookmark() }, leadingIcon = { Icon(if (isBookmarked) Icons.Default.BookmarkRemove else Icons.Default.BookmarkAdd, null) })
+            DropdownMenuItem(text = { Text("分享") }, onClick = { showMenu = false; onShare() }, leadingIcon = { Icon(Icons.Default.Share, null) })
         }
     }
 }
 
 @Composable
-private fun ControlBar(
-    uiState: PlayerUiState,
-    onPlayPause: () -> Unit,
-    onNextChapter: () -> Unit,
-    onPreviousChapter: () -> Unit,
-    onSpeedClick: () -> Unit,
-    onSleepClick: () -> Unit
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        tonalElevation = 8.dp
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Speed button
-            IconButton(onClick = onSpeedClick) {
-                Text(text = "${uiState.speed}x", fontSize = 14.sp)
-            }
-
-            // Previous chapter
-            IconButton(onClick = onPreviousChapter) {
-                Icon(Icons.Default.SkipPrevious, contentDescription = "上一章", modifier = Modifier.size(36.dp))
-            }
-
-            // Play/Pause
-            if (uiState.isLoading) {
-                CircularProgressIndicator(modifier = Modifier.size(56.dp))
-            } else {
-                FloatingActionButton(
-                    onClick = onPlayPause,
-                    shape = CircleShape
-                ) {
-                    Icon(
-                        imageVector = if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (uiState.isPlaying) "暂停" else "播放",
-                        modifier = Modifier.size(32.dp)
-                    )
-                }
-            }
-
-            // Next chapter
-            IconButton(onClick = onNextChapter) {
-                Icon(Icons.Default.SkipNext, contentDescription = "下一章", modifier = Modifier.size(36.dp))
-            }
-
-            // Sleep timer
-            IconButton(onClick = onSleepClick) {
-                Icon(
-                    Icons.Default.Timer,
-                    contentDescription = "睡眠定时器",
-                    tint = if (uiState.sleepTimerMinutes > 0 || uiState.sleepAtChapterEnd)
-                        MaterialTheme.colorScheme.primary
-                    else
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+private fun ControlBar(uiState: PlayerUiState, onPlayPause: () -> Unit, onNextChapter: () -> Unit, onPreviousChapter: () -> Unit, onSpeedClick: () -> Unit, onSleepClick: () -> Unit) {
+    Surface(modifier = Modifier.fillMaxWidth(), tonalElevation = 8.dp) {
+        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onSpeedClick) { Text("${uiState.speed}x", fontSize = 14.sp) }
+            IconButton(onPreviousChapter) { Icon(Icons.Default.SkipPrevious, "上一章", modifier = Modifier.size(36.dp)) }
+            if (uiState.isLoading) CircularProgressIndicator(Modifier.size(56.dp))
+            else FloatingActionButton(onPlayPause, shape = CircleShape) { Icon(if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, if (uiState.isPlaying) "暂停" else "播放", Modifier.size(32.dp)) }
+            IconButton(onNextChapter) { Icon(Icons.Default.SkipNext, "下一章", Modifier.size(36.dp)) }
+            IconButton(onSleepClick) { Icon(Icons.Default.Timer, "睡眠定时器", tint = if (uiState.sleepTimerMinutes > 0 || uiState.sleepAtChapterEnd) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
         }
     }
 }
 
 private fun startPlayback(context: Context, bookId: Long, chapterIndex: Int, sentenceIndex: Int, voice: String, speed: Float) {
-    val intent = Intent(context, PlaybackService::class.java).apply {
+    context.startService(Intent(context, PlaybackService::class.java).apply {
         action = PlaybackService.ACTION_PLAY
-        putExtra(PlaybackService.EXTRA_BOOK_ID, bookId)
-        putExtra(PlaybackService.EXTRA_CHAPTER_INDEX, chapterIndex)
-        putExtra(PlaybackService.EXTRA_SENTENCE_INDEX, sentenceIndex)
-        putExtra(PlaybackService.EXTRA_VOICE, voice)
-        putExtra(PlaybackService.EXTRA_SPEED, speed)
-    }
-    context.startService(intent)
+        putExtra(PlaybackService.EXTRA_BOOK_ID, bookId); putExtra(PlaybackService.EXTRA_CHAPTER_INDEX, chapterIndex)
+        putExtra(PlaybackService.EXTRA_SENTENCE_INDEX, sentenceIndex); putExtra(PlaybackService.EXTRA_VOICE, voice); putExtra(PlaybackService.EXTRA_SPEED, speed)
+    })
 }
 
-private fun formatTime(seconds: Int): String {
-    val min = seconds / 60
-    val sec = seconds % 60
-    return if (min > 0) "${min}分${sec}秒" else "${sec}秒"
-}
-
-private fun formatDuration(milliseconds: Long): String {
-    val seconds = (milliseconds / 1000).toInt()
-    if (seconds < 60) return "${seconds}秒"
-    val minutes = seconds / 60
-    val secs = seconds % 60
-    return if (secs > 0) "${minutes}分${secs}秒" else "${minutes}分钟"
-}
+private fun formatTime(seconds: Int) = if (seconds / 60 > 0) "${seconds / 60}分${seconds % 60}秒" else "${seconds}秒"
+private fun formatDuration(ms: Long): String { val s = (ms / 1000).toInt(); return if (s < 60) "${s}秒" else if (s % 60 > 0) "${s / 60}分${s % 60}秒" else "${s / 60}分钟" }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ChapterListPage(
-    chapters: List<com.tz.audiobook.domain.model.Chapter>,
-    currentIndex: Int,
-    isPreCaching: Boolean,
-    preCacheProgress: Float,
-    onChapterClick: (Int) -> Unit,
-    onPreCacheClick: () -> Unit,
-    onCancelPreCacheClick: () -> Unit,
-    onDismiss: () -> Unit
-) {
+private fun ChapterListPage(chapters: List<com.tz.audiobook.domain.model.Chapter>, currentIndex: Int, isPreCaching: Boolean, preCacheProgress: Float, onChapterClick: (Int) -> Unit, onPreCacheClick: () -> Unit, onCancelPreCacheClick: () -> Unit, onDismiss: () -> Unit) {
     var searchQuery by remember { mutableStateOf("") }
-    val listState = rememberLazyListState(initialFirstVisibleItemIndex = (currentIndex - 3).coerceAtLeast(0))
-    val coroutineScope = rememberCoroutineScope()
-
-    val filteredChapters = remember(chapters, searchQuery) {
-        if (searchQuery.isBlank()) chapters.mapIndexed { index, chapter -> index to chapter }
-        else chapters.mapIndexed { index, chapter -> index to chapter }
-            .filter { (_, chapter) -> chapter.title.contains(searchQuery, ignoreCase = true) }
-    }
-
-    val progress = ((currentIndex + 1).toFloat() / chapters.size.coerceAtLeast(1))
-
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.surface
-    ) {
+    val listState = rememberLazyListState((currentIndex - 3).coerceAtLeast(0))
+    val scope = rememberCoroutineScope()
+    val filtered = if (searchQuery.isBlank()) chapters.mapIndexed { i, c -> i to c } else chapters.mapIndexed { i, c -> i to c }.filter { it.second.title.contains(searchQuery, true) }
+    val progress = (currentIndex + 1).toFloat() / chapters.size.coerceAtLeast(1)
+    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
         Column {
-            // Top bar
             TopAppBar(
-                title = {
-                    Column {
-                        Text("目录", style = MaterialTheme.typography.titleMedium)
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "${currentIndex + 1}/${chapters.size}章",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = "${"%.1f".format(progress * 100)}%",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                },
-                actions = {
-                    // Jump to current chapter
-                    IconButton(onClick = {
-                        coroutineScope.launch {
-                            listState.animateScrollToItem(currentIndex.coerceAtLeast(0))
-                        }
-                    }) {
-                        Icon(Icons.Default.MyLocation, contentDescription = "定位当前章节")
-                    }
-                }
+                title = { Column { Text("目录"); Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Text("${currentIndex + 1}/${chapters.size}章", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Text("%.1f%%".format(progress * 100), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary) } } },
+                navigationIcon = { IconButton(onDismiss) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") } },
+                actions = { IconButton({ scope.launch { listState.animateScrollToItem(currentIndex.coerceAtLeast(0)) } }) { Icon(Icons.Default.MyLocation, "定位当前") } }
             )
-
-            // Progress bar
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier.fillMaxWidth().height(2.dp),
-                color = MaterialTheme.colorScheme.primary,
-                trackColor = MaterialTheme.colorScheme.surfaceVariant
-            )
-
-            // Search bar
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                placeholder = { Text("搜索章节") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { searchQuery = "" }) {
-                            Icon(Icons.Default.Close, contentDescription = "清空")
-                        }
-                    }
-                },
-                singleLine = true,
-                shape = MaterialTheme.shapes.medium
-            )
-
-            // Pre-cache section
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (isPreCaching) {
-                    Text(
-                        text = "缓存中 ${"%.0f".format(preCacheProgress * 100)}%",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.secondary
-                    )
-                    TextButton(onClick = onCancelPreCacheClick) {
-                        Text("取消", style = MaterialTheme.typography.labelSmall)
-                    }
-                } else {
-                    TextButton(onClick = onPreCacheClick) {
-                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("预缓存全书", style = MaterialTheme.typography.labelMedium)
-                    }
-                }
+            LinearProgressIndicator({ progress }, Modifier.fillMaxWidth().height(2.dp), MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.surfaceVariant)
+            OutlinedTextField(searchQuery, { searchQuery = it }, Modifier.fillMaxWidth().padding(16.dp, 8.dp), placeholder = { Text("搜索章节") }, leadingIcon = { Icon(Icons.Default.Search, null) }, trailingIcon = { if (searchQuery.isNotEmpty()) IconButton({ searchQuery = "" }) { Icon(Icons.Default.Close, "清空") } }, singleLine = true, shape = MaterialTheme.shapes.medium)
+            Row(Modifier.fillMaxWidth().padding(16.dp, 4.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                if (isPreCaching) { Text("缓存中 ${"%.0f".format(preCacheProgress * 100)}%", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary); TextButton(onCancelPreCacheClick) { Text("取消", style = MaterialTheme.typography.labelSmall) } }
+                else TextButton(onPreCacheClick) { Icon(Icons.Default.Download, null, Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("预缓存全书", style = MaterialTheme.typography.labelMedium) }
             }
-            if (isPreCaching) {
-                LinearProgressIndicator(
-                    progress = { preCacheProgress },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(2.dp),
-                    color = MaterialTheme.colorScheme.secondary,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            }
-
-            // Chapter list
-            if (filteredChapters.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "未找到匹配章节",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            } else {
-                LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-                    items(filteredChapters.size) { idx ->
-                        val (index, chapter) = filteredChapters[idx]
-                        val isCurrent = index == currentIndex
-
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onChapterClick(index) }
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            if (isCurrent) {
-                                Icon(
-                                    Icons.Default.PlayArrow,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                            }
-                            Text(
-                                text = chapter.title,
-                                style = if (isCurrent) MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.primary)
-                                else MaterialTheme.typography.bodyLarge,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f)
-                            )
-                            if (chapter.wordCount > 0) {
-                                Text(
-                                    text = formatWordCount(chapter.wordCount),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                                )
-                            }
-                        }
-                        if (idx < filteredChapters.size - 1) {
-                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                        }
+            if (isPreCaching) LinearProgressIndicator({ preCacheProgress }, Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(2.dp), MaterialTheme.colorScheme.secondary, MaterialTheme.colorScheme.surfaceVariant)
+            if (filtered.isEmpty()) Box(Modifier.fillMaxSize(), Alignment.Center) { Text("未找到匹配章节", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            else LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+                items(filtered.size) { idx ->
+                    val (i, c) = filtered[idx]
+                    val cur = i == currentIndex
+                    Row(Modifier.fillMaxWidth().clickable { onChapterClick(i) }.padding(16.dp, 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (cur) { Icon(Icons.Default.PlayArrow, null, Modifier.size(18.dp), MaterialTheme.colorScheme.primary); Spacer(Modifier.width(8.dp)) }
+                        Text(c.title, style = if (cur) MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.primary) else MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                        if (c.wordCount > 0) Text(formatWordCount(c.wordCount), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
                     }
+                    if (idx < filtered.size - 1) HorizontalDivider(Modifier.padding(horizontal = 16.dp))
                 }
             }
         }
     }
 }
 
-private fun formatWordCount(count: Int): String {
-    return when {
-        count >= 10000 -> "${count / 10000}万字"
-        count >= 1000 -> "${count / 1000}千字"
-        else -> "${count}字"
-    }
-}
+private fun formatWordCount(n: Int) = when { n >= 10000 -> "${n / 10000}万字"; n >= 1000 -> "${n / 1000}千字"; else -> "${n}字" }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
-private fun SpeedBottomSheet(
-    currentSpeed: Float,
-    onSpeedSelected: (Float) -> Unit,
-    onDismiss: () -> Unit,
-    sheetState: SheetState
-) {
-    val speeds = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f, 3.0f)
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 32.dp)
-        ) {
-            Text(
-                text = "播放速度",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
-            )
-            FlowRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                speeds.forEach { speed ->
-                    FilterChip(
-                        selected = speed == currentSpeed,
-                        onClick = { onSpeedSelected(speed) },
-                        label = { Text("${speed}x") }
-                    )
-                }
+private fun SpeedBottomSheet(currentSpeed: Float, onSpeedSelected: (Float) -> Unit, onDismiss: () -> Unit, sheetState: SheetState) {
+    val speeds = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f, 3f)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(Modifier.fillMaxWidth().padding(bottom = 32.dp)) {
+            Text("播放速度", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(24.dp, 8.dp))
+            FlowRow(Modifier.fillMaxWidth().padding(16.dp), Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), Arrangement.spacedBy(8.dp)) {
+                speeds.forEach { FilterChip(it == currentSpeed, { onSpeedSelected(it) }, { Text("${it}x") }, Modifier.padding(horizontal = 4.dp)) }
             }
         }
     }
 }
 
 @Composable
-private fun VoiceDialog(
-    currentVoice: String,
-    onVoiceSelected: (String) -> Unit,
-    onDismiss: () -> Unit
-) {
+private fun VoiceDialog(currentVoice: String, onVoiceSelected: (String) -> Unit, onDismiss: () -> Unit) {
     val context = LocalContext.current
-    var favoriteVoices by remember { mutableStateOf(SettingsPrefs.getFavoriteVoices(context)) }
-
-    // Sort voices: favorites first, then the rest
-    val sortedVoices = remember(favoriteVoices) {
-        val favorites = EdgeTtsConstants.CHINESE_VOICES.filter { it.name in favoriteVoices }
-        val others = EdgeTtsConstants.CHINESE_VOICES.filter { it.name !in favoriteVoices }
-        favorites + others
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("选择配音") },
-        text = {
-            LazyColumn {
-                if (favoriteVoices.isNotEmpty() && favoriteVoices.size < EdgeTtsConstants.CHINESE_VOICES.size) {
-                    item {
-                        Text(
-                            text = "收藏",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(start = 16.dp, top = 4.dp, bottom = 4.dp)
-                        )
-                    }
-                    items(sortedVoices.take(favoriteVoices.size).size) { idx ->
-                        val voice = sortedVoices[idx]
-                        VoiceItem(
-                            voice = voice,
-                            isCurrent = voice.name == currentVoice,
-                            isFavorite = voice.name in favoriteVoices,
-                            onSelect = { onVoiceSelected(voice.name) },
-                            onToggleFavorite = {
-                                SettingsPrefs.toggleFavoriteVoice(context, voice.name)
-                                favoriteVoices = SettingsPrefs.getFavoriteVoices(context)
-                            }
-                        )
-                    }
-                    item {
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                        Text(
-                            text = "全部音色",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 16.dp, top = 4.dp, bottom = 4.dp)
-                        )
-                    }
-                    items(sortedVoices.drop(favoriteVoices.size).size) { idx ->
-                        val voice = sortedVoices[favoriteVoices.size + idx]
-                        VoiceItem(
-                            voice = voice,
-                            isCurrent = voice.name == currentVoice,
-                            isFavorite = false,
-                            onSelect = { onVoiceSelected(voice.name) },
-                            onToggleFavorite = {
-                                SettingsPrefs.toggleFavoriteVoice(context, voice.name)
-                                favoriteVoices = SettingsPrefs.getFavoriteVoices(context)
-                            }
-                        )
-                    }
-                } else {
-                    items(sortedVoices.size) { idx ->
-                        val voice = sortedVoices[idx]
-                        VoiceItem(
-                            voice = voice,
-                            isCurrent = voice.name == currentVoice,
-                            isFavorite = voice.name in favoriteVoices,
-                            onSelect = { onVoiceSelected(voice.name) },
-                            onToggleFavorite = {
-                                SettingsPrefs.toggleFavoriteVoice(context, voice.name)
-                                favoriteVoices = SettingsPrefs.getFavoriteVoices(context)
-                            }
-                        )
-                    }
+    var favs by remember { mutableStateOf(SettingsPrefs.getFavoriteVoices(context)) }
+    val sorted = remember(favs) { EdgeTtsConstants.CHINESE_VOICES.filter { it.name in favs } + EdgeTtsConstants.CHINESE_VOICES.filter { it.name !in favs } }
+    AlertDialog(onDismiss, title = { Text("选择配音") }, text = {
+        LazyColumn {
+            items(sorted.size) { idx ->
+                val v = sorted[idx]
+                Row(Modifier.fillMaxWidth().clickable { onVoiceSelected(v.name) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(selected = v.name == currentVoice, onClick = { onVoiceSelected(v.name) })
+                    Spacer(Modifier.width(8.dp))
+                    Column(Modifier.weight(1f)) { Text("${v.displayName} (${v.gender})", style = MaterialTheme.typography.bodyMedium); Text(v.style, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    IconButton({ SettingsPrefs.toggleFavoriteVoice(context, v.name); favs = SettingsPrefs.getFavoriteVoices(context) }, Modifier.size(32.dp)) { Icon(if (v.name in favs) Icons.Default.Star else Icons.Default.StarBorder, if (v.name in favs) "取消收藏" else "收藏", tint = if (v.name in favs) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f), modifier = Modifier.size(20.dp)) }
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } }
-    )
-}
-
-@Composable
-private fun VoiceItem(
-    voice: VoiceInfo,
-    isCurrent: Boolean,
-    isFavorite: Boolean,
-    onSelect: () -> Unit,
-    onToggleFavorite: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onSelect() }
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        RadioButton(
-            selected = isCurrent,
-            onClick = { onSelect() }
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "${voice.displayName} (${voice.gender})",
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Text(
-                text = voice.style,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
-        IconButton(onClick = onToggleFavorite, modifier = Modifier.size(32.dp)) {
-            Icon(
-                imageVector = if (isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
-                contentDescription = if (isFavorite) "取消收藏" else "收藏",
-                tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                modifier = Modifier.size(20.dp)
-            )
+    }, confirmButton = { TextButton(onDismiss) { Text("关闭") } })
+}
+
+@Composable
+private fun SleepTimerDialog(currentMinutes: Int, sleepAtChapterEnd: Boolean, onSetTimer: (Int) -> Unit, onSetChapterEnd: () -> Unit, onCancel: () -> Unit, onDismiss: () -> Unit) {
+    val opts = listOf(15 to "15分钟后", 30 to "30分钟后", 45 to "45分钟后", 60 to "60分钟后")
+    AlertDialog(onDismiss, title = { Text("睡眠定时器") }, text = {
+        Column {
+            opts.forEach { (m, l) -> Row(Modifier.fillMaxWidth().clickable { onSetTimer(m) }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = currentMinutes == m && !sleepAtChapterEnd, onClick = { onSetTimer(m) }); Spacer(Modifier.width(8.dp)); Text(l) } }
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            Row(Modifier.fillMaxWidth().clickable { onSetChapterEnd() }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = sleepAtChapterEnd, onClick = { onSetChapterEnd() }); Spacer(Modifier.width(8.dp)); Text("读完当前章节后暂停") }
+            if (currentMinutes > 0 || sleepAtChapterEnd) { HorizontalDivider(Modifier.padding(vertical = 8.dp)); Row(Modifier.fillMaxWidth().clickable { onCancel() }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Close, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(24.dp)); Spacer(Modifier.width(8.dp)); Text("关闭定时器", color = MaterialTheme.colorScheme.error) } }
         }
-    }
+    }, confirmButton = { TextButton(onDismiss) { Text("关闭") } })
 }
 
-@Composable
-private fun SleepTimerDialog(
-    currentMinutes: Int,
-    sleepAtChapterEnd: Boolean,
-    onSetTimer: (Int) -> Unit,
-    onSetChapterEnd: () -> Unit,
-    onCancel: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    val options = listOf(
-        15 to "15分钟后",
-        30 to "30分钟后",
-        45 to "45分钟后",
-        60 to "60分钟后"
-    )
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("睡眠定时器") },
-        text = {
-            Column {
-                options.forEach { (minutes, label) ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onSetTimer(minutes) }
-                            .padding(vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = currentMinutes == minutes && !sleepAtChapterEnd,
-                            onClick = { onSetTimer(minutes) }
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(text = label, style = MaterialTheme.typography.bodyLarge)
-                    }
-                }
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onSetChapterEnd() }
-                        .padding(vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(
-                        selected = sleepAtChapterEnd,
-                        onClick = { onSetChapterEnd() }
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = "读完当前章节后暂停", style = MaterialTheme.typography.bodyLarge)
-                }
-                if (currentMinutes > 0 || sleepAtChapterEnd) {
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onCancel() }
-                            .padding(vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.Close,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "关闭定时器",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } }
-    )
-}
-
-data class BookmarkItem(
-    val chapterIndex: Int,
-    val sentenceIndex: Int,
-    val chapterTitle: String,
-    val textPreview: String
-)
+data class BookmarkItem(val chapterIndex: Int, val sentenceIndex: Int, val chapterTitle: String, val textPreview: String)
 
 @Composable
-private fun BookmarkListDialog(
-    bookId: Long,
-    chapters: List<com.tz.audiobook.domain.model.Chapter>,
-    currentChapterIndex: Int,
-    onJumpToBookmark: (Int, Int) -> Unit,
-    onDismiss: () -> Unit
-) {
+private fun BookmarkListDialog(bookId: Long, chapters: List<com.tz.audiobook.domain.model.Chapter>, currentChapterIndex: Int, onJumpToBookmark: (Int, Int) -> Unit, onDismiss: () -> Unit) {
     val context = LocalContext.current
     var bookmarks by remember { mutableStateOf(emptyList<BookmarkItem>()) }
-
     LaunchedEffect(bookId) {
-        val rawBookmarks = SettingsPrefs.getBookmarks(context, bookId)
-        bookmarks = rawBookmarks.mapNotNull { raw ->
+        bookmarks = SettingsPrefs.getBookmarks(context, bookId).mapNotNull { raw ->
             val parts = raw.split(":")
-            if (parts.size >= 3) {
-                val chapterIdx = parts[0].toIntOrNull() ?: return@mapNotNull null
-                val sentenceIdx = parts[1].toIntOrNull() ?: return@mapNotNull null
-                val preview = parts.drop(2).joinToString(":")
-                val chapterTitle = chapters.getOrNull(chapterIdx)?.title ?: "第${chapterIdx + 1}章"
-                BookmarkItem(chapterIdx, sentenceIdx, chapterTitle, preview)
-            } else null
+            if (parts.size >= 3) { val ci = parts[0].toIntOrNull() ?: return@mapNotNull null; val si = parts[1].toIntOrNull() ?: return@mapNotNull null; BookmarkItem(ci, si, chapters.getOrNull(ci)?.title ?: "第${ci + 1}章", parts.drop(2).joinToString(":")) } else null
         }.sortedByDescending { it.chapterIndex * 10000 + it.sentenceIndex }
     }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("书签") },
-        text = {
-            if (bookmarks.isEmpty()) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Icon(
-                        Icons.Default.BookmarkBorder,
-                        contentDescription = null,
-                        modifier = Modifier.size(48.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = "暂无书签",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "长按句子添加书签",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                    )
-                }
-            } else {
-                LazyColumn {
-                    items(bookmarks.size) { index ->
-                        val bookmark = bookmarks[index]
-                        val isCurrentChapter = bookmark.chapterIndex == currentChapterIndex
-
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onJumpToBookmark(bookmark.chapterIndex, bookmark.sentenceIndex) }
-                                .padding(vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.Default.Bookmark,
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp),
-                                tint = if (isCurrentChapter) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = bookmark.chapterTitle,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = if (isCurrentChapter) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Text(
-                                    text = bookmark.textPreview,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            IconButton(
-                                onClick = {
-                                    SettingsPrefs.removeBookmark(context, bookId, bookmark.chapterIndex, bookmark.sentenceIndex)
-                                    val rawBookmarks = SettingsPrefs.getBookmarks(context, bookId)
-                                    bookmarks = rawBookmarks.mapNotNull { raw ->
-                                        val parts = raw.split(":")
-                                        if (parts.size >= 3) {
-                                            val chapterIdx = parts[0].toIntOrNull() ?: return@mapNotNull null
-                                            val sentenceIdx = parts[1].toIntOrNull() ?: return@mapNotNull null
-                                            val preview = parts.drop(2).joinToString(":")
-                                            val chapterTitle = chapters.getOrNull(chapterIdx)?.title ?: "第${chapterIdx + 1}章"
-                                            BookmarkItem(chapterIdx, sentenceIdx, chapterTitle, preview)
-                                        } else null
-                                    }.sortedByDescending { it.chapterIndex * 10000 + it.sentenceIndex }
-                                },
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.Close,
-                                    contentDescription = "删除书签",
-                                    modifier = Modifier.size(18.dp),
-                                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.6f)
-                                )
-                            }
-                        }
-                        if (index < bookmarks.size - 1) {
-                            HorizontalDivider(modifier = Modifier.padding(start = 32.dp))
-                        }
-                    }
-                }
+    AlertDialog(onDismiss, title = { Text("书签") }, text = {
+        if (bookmarks.isEmpty()) Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.BookmarkBorder, null, Modifier.size(48.dp), MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)); Spacer(Modifier.height(12.dp)); Text("暂无书签", color = MaterialTheme.colorScheme.onSurfaceVariant); Spacer(Modifier.height(4.dp)); Text("长按句子添加书签", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)) }
+        else LazyColumn { items(bookmarks.size) { idx ->
+            val b = bookmarks[idx]; val cur = b.chapterIndex == currentChapterIndex
+            Row(Modifier.fillMaxWidth().clickable { onJumpToBookmark(b.chapterIndex, b.sentenceIndex) }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Bookmark, null, Modifier.size(20.dp), if (cur) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) { Text(b.chapterTitle, style = MaterialTheme.typography.labelMedium, color = if (cur) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(b.textPreview, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f), maxLines = 2, overflow = TextOverflow.Ellipsis) }
+                IconButton({ SettingsPrefs.removeBookmark(context, bookId, b.chapterIndex, b.sentenceIndex); bookmarks = SettingsPrefs.getBookmarks(context, bookId).mapNotNull { raw -> val p = raw.split(":"); if (p.size >= 3) { val c = p[0].toIntOrNull() ?: return@mapNotNull null; val s = p[1].toIntOrNull() ?: return@mapNotNull null; BookmarkItem(c, s, chapters.getOrNull(c)?.title ?: "第${c + 1}章", p.drop(2).joinToString(":")) } else null }.sortedByDescending { it.chapterIndex * 10000 + it.sentenceIndex } }, Modifier.size(36.dp)) { Icon(Icons.Default.Close, "删除书签", Modifier.size(18.dp), MaterialTheme.colorScheme.error.copy(alpha = 0.6f)) }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } }
-    )
+            if (idx < bookmarks.size - 1) HorizontalDivider(Modifier.padding(start = 32.dp))
+        } }
+    }, confirmButton = { TextButton(onDismiss) { Text("关闭") } })
 }

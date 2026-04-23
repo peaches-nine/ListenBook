@@ -45,27 +45,27 @@ object SettingsPrefs {
     }
 
     private const val KEY_FAVORITE_VOICES = "favorite_voices"
-    private const val KEY_FONT_SIZE = "font_size"
-    private const val KEY_LINE_HEIGHT = "line_height"
+    private const val KEY_FONT_SIZE_SP = "font_size_sp"
+    private const val KEY_LINE_HEIGHT_MULT = "line_height_mult_x10"
 
-    fun getFontSize(context: Context): Int {
+    fun getFontSizeSp(context: Context): Int {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getInt(KEY_FONT_SIZE, 1)
+            .getInt(KEY_FONT_SIZE_SP, 16)
     }
 
-    fun setFontSize(context: Context, size: Int) {
+    fun setFontSizeSp(context: Context, size: Int) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit().putInt(KEY_FONT_SIZE, size).apply()
+            .edit().putInt(KEY_FONT_SIZE_SP, size.coerceIn(12, 28)).apply()
     }
 
-    fun getLineHeight(context: Context): Int {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getInt(KEY_LINE_HEIGHT, 1)
+    fun getLineHeightMult(context: Context): Float {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getInt(KEY_LINE_HEIGHT_MULT, 15) / 10f
     }
 
-    fun setLineHeight(context: Context, height: Int) {
+    fun setLineHeightMult(context: Context, mult: Float) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit().putInt(KEY_LINE_HEIGHT, height).apply()
+            .edit().putInt(KEY_LINE_HEIGHT_MULT, (mult * 10).toInt().coerceIn(10, 30)).apply()
     }
 
     fun getFavoriteVoices(context: Context): Set<String> {
@@ -130,15 +130,11 @@ fun SettingsScreen(
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
-    ) { uri: Uri? ->
-        if (uri != null) viewModel.exportData(context, uri)
-    }
+    ) { uri: Uri? -> if (uri != null) viewModel.exportData(context, uri) }
 
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
-        if (uri != null) viewModel.importData(context, uri)
-    }
+    ) { uri: Uri? -> if (uri != null) viewModel.importData(context, uri) }
 
     Scaffold(
         topBar = {
@@ -152,15 +148,10 @@ fun SettingsScreen(
             )
         }
     ) { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding)
-        ) {
-            // --- 外观设置 ---
-            item {
-                SettingSectionHeader(title = "外观")
-            }
+        LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
+            // 外观
+            item { SectionHeader("外观") }
 
-            // 深色模式
             item {
                 var darkMode by remember { mutableStateOf(SettingsPrefs.getDarkMode(context)) }
                 SettingChipRow(
@@ -173,68 +164,61 @@ fun SettingsScreen(
                 HorizontalDivider()
             }
 
-            // 字体大小
             item {
-                var fontSize by remember { mutableStateOf(SettingsPrefs.getFontSize(context)) }
-                SettingChipRow(
+                var fontSize by remember { mutableIntStateOf(SettingsPrefs.getFontSizeSp(context)) }
+                SettingSliderRow(
                     icon = Icons.Default.TextFields,
                     title = "字体大小",
-                    options = listOf(0 to "小", 1 to "中", 2 to "大"),
-                    selected = fontSize,
-                    onSelect = { fontSize = it; SettingsPrefs.setFontSize(context, it) }
+                    value = fontSize,
+                    valueRange = 12..28,
+                    valueText = "${fontSize}sp",
+                    onValueChange = { fontSize = it; SettingsPrefs.setFontSizeSp(context, it) }
                 )
                 HorizontalDivider()
             }
 
-            // 行间距
             item {
-                var lineHeight by remember { mutableStateOf(SettingsPrefs.getLineHeight(context)) }
-                SettingChipRow(
+                var lineHeight by remember { mutableFloatStateOf(SettingsPrefs.getLineHeightMult(context)) }
+                SettingSliderRow(
                     icon = Icons.Default.FormatLineSpacing,
                     title = "行间距",
-                    options = listOf(0 to "紧凑", 1 to "标准", 2 to "宽松"),
-                    selected = lineHeight,
-                    onSelect = { lineHeight = it; SettingsPrefs.setLineHeight(context, it) }
+                    value = (lineHeight * 10).toInt(),
+                    valueRange = 10..30,
+                    valueText = String.format("%.1fx", lineHeight),
+                    onValueChange = { lineHeight = it / 10f; SettingsPrefs.setLineHeightMult(context, it / 10f) }
                 )
                 HorizontalDivider()
             }
 
-            // --- 播放设置 ---
-            item { SettingSectionHeader(title = "播放") }
+            // 播放
+            item { SectionHeader("播放") }
 
             item {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            bgPlayEnabled = !bgPlayEnabled
-                            SettingsPrefs.setBackgroundPlayEnabled(context, bgPlayEnabled)
-                        }
-                        .padding(16.dp),
+                    modifier = Modifier.fillMaxWidth().clickable {
+                        bgPlayEnabled = !bgPlayEnabled
+                        SettingsPrefs.setBackgroundPlayEnabled(context, bgPlayEnabled)
+                    }.padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.PlayCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(text = "后台继续播放", style = MaterialTheme.typography.bodyLarge)
+                    Icon(Icons.Default.PlayCircle, null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(16.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("后台继续播放", style = MaterialTheme.typography.bodyLarge)
                         Text(
-                            text = if (bgPlayEnabled) "切到后台时继续播放音频" else "切到后台时暂停播放",
+                            if (bgPlayEnabled) "切到后台时继续播放音频" else "切到后台时暂停播放",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    Switch(
-                        checked = bgPlayEnabled,
-                        onCheckedChange = { bgPlayEnabled = it; SettingsPrefs.setBackgroundPlayEnabled(context, it) }
-                    )
+                    Switch(bgPlayEnabled, onCheckedChange = { bgPlayEnabled = it; SettingsPrefs.setBackgroundPlayEnabled(context, it) })
                 }
                 HorizontalDivider()
             }
 
-            // --- 存储 ---
-            item { SettingSectionHeader(title = "存储") }
+            // 存储
+            item { SectionHeader("存储") }
 
-            // Cache section header with total
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
@@ -242,73 +226,57 @@ fun SettingsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Storage, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Icon(Icons.Default.Storage, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(12.dp))
                         Text("音频缓存", style = MaterialTheme.typography.bodyLarge)
                     }
-                    Text(
-                        text = formatSize(uiState.totalCacheSize),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Text(formatSize(uiState.totalCacheSize), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
 
-            // Book cache list
             if (uiState.bookCaches.isNotEmpty()) {
-                items(uiState.bookCaches, key = { it.bookId }) { bookCache ->
+                items(uiState.bookCaches, key = { it.bookId }) { cache ->
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { deleteBookId = bookCache.bookId; deleteBookTitle = bookCache.bookTitle }
+                        modifier = Modifier.fillMaxWidth().clickable { deleteBookId = cache.bookId; deleteBookTitle = cache.bookTitle }
                             .padding(horizontal = 16.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(text = bookCache.bookTitle, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
-                            Text(text = formatSize(bookCache.cacheSize), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Column(Modifier.weight(1f)) {
+                            Text(cache.bookTitle, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                            Text(formatSize(cache.cacheSize), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        IconButton(onClick = { deleteBookId = bookCache.bookId; deleteBookTitle = bookCache.bookTitle }) {
-                            Icon(Icons.Default.Delete, contentDescription = "删除缓存", tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f), modifier = Modifier.size(20.dp))
+                        IconButton(onClick = { deleteBookId = cache.bookId; deleteBookTitle = cache.bookTitle }) {
+                            Icon(Icons.Default.Delete, "删除", tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f), modifier = Modifier.size(20.dp))
                         }
                     }
                 }
             } else if (!uiState.isLoading) {
-                item {
-                    Text(text = "暂无缓存", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
-                }
+                item { Text("暂无缓存", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
             }
 
             item {
                 HorizontalDivider()
-                TextButton(
-                    onClick = { showClearAllDialog = true },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
-                    Spacer(modifier = Modifier.width(8.dp))
+                TextButton(onClick = { showClearAllDialog = true }, modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
+                    Icon(Icons.Default.Delete, null, Modifier.size(18.dp), MaterialTheme.colorScheme.error)
+                    Spacer(Modifier.width(8.dp))
                     Text("清除全部缓存", color = MaterialTheme.colorScheme.error)
                 }
             }
 
-            // --- 数据 ---
-            item { SettingSectionHeader(title = "数据") }
+            // 数据
+            item { SectionHeader("数据") }
 
-            // Export
             item {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(java.util.Date())
-                            exportLauncher.launch("audiobook_backup_$timestamp.json")
-                        }
-                        .padding(16.dp),
+                    modifier = Modifier.fillMaxWidth().clickable {
+                        val ts = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(java.util.Date())
+                        exportLauncher.launch("audiobook_backup_$ts.json")
+                    }.padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.Upload, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Upload, null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(16.dp))
+                    Column(Modifier.weight(1f)) {
                         Text("导出数据", style = MaterialTheme.typography.bodyLarge)
                         Text("导出阅读进度、设置、书签", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -316,18 +284,14 @@ fun SettingsScreen(
                 HorizontalDivider()
             }
 
-            // Import
             item {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { importLauncher.launch(arrayOf("application/json")) }
-                        .padding(16.dp),
+                    modifier = Modifier.fillMaxWidth().clickable { importLauncher.launch(arrayOf("application/json")) }.padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.Download, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Download, null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(16.dp))
+                    Column(Modifier.weight(1f)) {
                         Text("导入数据", style = MaterialTheme.typography.bodyLarge)
                         Text("从备份文件恢复数据", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -335,7 +299,6 @@ fun SettingsScreen(
             }
         }
 
-        // Dialogs
         if (deleteBookId >= 0) {
             AlertDialog(
                 onDismissRequest = { deleteBookId = -1 },
@@ -356,39 +319,24 @@ fun SettingsScreen(
             )
         }
 
-        uiState.exportMessage?.let { message ->
-            AlertDialog(
-                onDismissRequest = { viewModel.clearExportMessage() },
-                title = { Text("导出") },
-                text = { Text(message) },
-                confirmButton = { TextButton(onClick = { viewModel.clearExportMessage() }) { Text("确定") } }
-            )
+        uiState.exportMessage?.let { msg ->
+            AlertDialog(onDismissRequest = { viewModel.clearExportMessage() }, title = { Text("导出") }, text = { Text(msg) }, confirmButton = { TextButton(onClick = { viewModel.clearExportMessage() }) { Text("确定") } })
         }
 
-        uiState.importMessage?.let { message ->
+        uiState.importMessage?.let { msg ->
             AlertDialog(
                 onDismissRequest = { viewModel.clearImportMessage() },
                 title = { Text("导入") },
-                text = { Text(message) },
-                confirmButton = {
-                    TextButton(onClick = {
-                        viewModel.clearImportMessage()
-                        bgPlayEnabled = SettingsPrefs.isBackgroundPlayEnabled(context)
-                    }) { Text("确定") }
-                }
+                text = { Text(msg) },
+                confirmButton = { TextButton(onClick = { viewModel.clearImportMessage(); bgPlayEnabled = SettingsPrefs.isBackgroundPlayEnabled(context) }) { Text("确定") } }
             )
         }
     }
 }
 
 @Composable
-private fun SettingSectionHeader(title: String) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-    )
+private fun SectionHeader(title: String) {
+    Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
 }
 
 @Composable
@@ -401,16 +349,42 @@ private fun <T> SettingChipRow(
 ) {
     Column(modifier = Modifier.padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Spacer(modifier = Modifier.width(16.dp))
-            Text(text = title, style = MaterialTheme.typography.bodyLarge)
+            Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(16.dp))
+            Text(title, style = MaterialTheme.typography.bodyLarge)
         }
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            options.forEach { (value, label) ->
-                FilterChip(selected = value == selected, onClick = { onSelect(value) }, label = { Text(label) })
-            }
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            options.forEach { (v, l) -> FilterChip(selected = v == selected, onClick = { onSelect(v) }, label = { Text(l) }) }
         }
+    }
+}
+
+@Composable
+private fun SettingSliderRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    value: Int,
+    valueRange: IntRange,
+    valueText: String,
+    onValueChange: (Int) -> Unit
+) {
+    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(16.dp))
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Spacer(Modifier.weight(1f))
+            Text(valueText, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+        }
+        Spacer(Modifier.height(8.dp))
+        Slider(
+            value = value.toFloat(),
+            onValueChange = { onValueChange(it.toInt()) },
+            valueRange = valueRange.first.toFloat()..valueRange.last.toFloat(),
+            steps = valueRange.last - valueRange.first - 1,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+        )
     }
 }
 

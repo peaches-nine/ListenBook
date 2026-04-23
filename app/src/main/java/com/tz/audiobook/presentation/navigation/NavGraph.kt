@@ -34,7 +34,8 @@ fun NavGraph(
             arguments = listOf(navArgument("bookId") { type = androidx.navigation.NavType.LongType })
         ) {
             PlayerScreen(
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                onSettings = { navController.navigate(Screen.Settings.route) }
             )
         }
 
