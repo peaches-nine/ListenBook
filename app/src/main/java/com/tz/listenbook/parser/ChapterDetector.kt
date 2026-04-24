@@ -26,6 +26,8 @@ object ChapterDetector {
         Regex("^尾声.*$", RegexOption.MULTILINE),
         Regex("^后记.*$", RegexOption.MULTILINE),
         Regex("^终章.*$", RegexOption.MULTILINE),
+        // Part/division format: 上部 xxx, 上 部 xxx, 中篇 xxx
+        Regex("^[上中下]\\s*[部篇].*$", RegexOption.MULTILINE),
         // Numbered sections: 1. xxx, 2、xxx (with dot or comma)
         Regex("^\\d+[\\.、].+$", RegexOption.MULTILINE),
         // Number followed by space and title (like "5 周日决定")

@@ -1,7 +1,8 @@
 package com.tz.listenbook.presentation.settings
 
-import android.content.Context
+import android.content.Intent
 import android.net.Uri
+import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -85,6 +86,18 @@ object SettingsPrefs {
         setFavoriteVoices(context, favorites)
     }
 
+    private const val KEY_AUTO_UPDATE = "auto_update_check"
+
+    fun isAutoUpdateCheck(context: Context): Boolean {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_AUTO_UPDATE, true)
+    }
+
+    fun setAutoUpdateCheck(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_AUTO_UPDATE, enabled).apply()
+    }
+
     private const val KEY_BOOKMARKS = "bookmarks_%d"
 
     fun getBookmarks(context: Context, bookId: Long): Set<String> {
@@ -120,14 +133,19 @@ object SettingsPrefs {
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
-    viewModel: SettingsViewModel = hiltViewModel()
+    viewModel: SettingsViewModel = hiltViewModel(),
+    updateChecker: com.tz.listenbook.presentation.bookshelf.UpdateCheckerViewModel = androidx.hilt.navigation.compose.hiltViewModel()
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
+    val updateUiState by updateChecker.uiState.collectAsState()
     var bgPlayEnabled by remember { mutableStateOf(SettingsPrefs.isBackgroundPlayEnabled(context)) }
     var showClearAllDialog by remember { mutableStateOf(false) }
     var deleteBookId by remember { mutableLongStateOf(-1) }
     var deleteBookTitle by remember { mutableStateOf("") }
+    val versionName = remember {
+        try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0" } catch (_: Exception) { "1.0" }
+    }
 
     // Lift font settings state to parent level for preview
     var fontSize by remember { mutableIntStateOf(SettingsPrefs.getFontSizeSp(context)) }
@@ -305,6 +323,51 @@ fun SettingsScreen(
                     }
                 }
             }
+
+            // 关于
+            item { SectionHeader("关于") }
+
+            item {
+                var autoUpdate by remember { mutableStateOf(SettingsPrefs.isAutoUpdateCheck(context)) }
+                Row(
+                    modifier = Modifier.fillMaxWidth().clickable {
+                        autoUpdate = !autoUpdate
+                        SettingsPrefs.setAutoUpdateCheck(context, autoUpdate)
+                    }.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Notifications, null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(16.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("自动检查更新", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            if (autoUpdate) "启动时自动检查新版本" else "仅在手动点击时检查",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(autoUpdate, onCheckedChange = { autoUpdate = it; SettingsPrefs.setAutoUpdateCheck(context, it) })
+                }
+                HorizontalDivider()
+            }
+
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().clickable { updateChecker.checkForUpdate() }
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(16.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("检查更新", style = MaterialTheme.typography.bodyLarge)
+                        Text("当前版本 $versionName", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (updateUiState.isChecking) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    }
+                }
+            }
         }
 
         if (deleteBookId >= 0) {
@@ -337,6 +400,18 @@ fun SettingsScreen(
                 title = { Text("导入") },
                 text = { Text(msg) },
                 confirmButton = { TextButton(onClick = { viewModel.clearImportMessage(); bgPlayEnabled = SettingsPrefs.isBackgroundPlayEnabled(context) }) { Text("确定") } }
+            )
+        }
+
+        // Update dialog
+        updateUiState.updateInfo?.let { info ->
+            UpdateDialog(
+                info = info,
+                onDismiss = { updateChecker.clearUpdateInfo() },
+                onUpdateClick = {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(info.downloadUrl))
+                    context.startActivity(intent)
+                }
             )
         }
     }
@@ -421,4 +496,47 @@ private fun TextPreviewCard(fontSize: Int, lineHeightMult: Float) {
             )
         }
     }
+}
+
+@Composable
+private fun UpdateDialog(
+    info: com.tz.listenbook.data.remote.github.ReleaseInfo,
+    onDismiss: () -> Unit,
+    onUpdateClick: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("发现新版本 v${info.versionName}") },
+        text = {
+            Column {
+                Text(
+                    "发布日期: ${info.releaseDate}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(8.dp))
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(
+                        text = info.releaseBody.ifBlank { "请查看 GitHub 获取更新详情" },
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(8.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onUpdateClick(); onDismiss() }) {
+                Text("前往下载")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("稍后再说")
+            }
+        }
+    )
 }

@@ -1,6 +1,7 @@
 package com.tz.listenbook.presentation.bookshelf
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -31,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.tz.listenbook.domain.model.Book
 import com.tz.listenbook.domain.model.ReadingProgress
+import com.tz.listenbook.presentation.settings.SettingsPrefs
 
 private fun getFileName(context: Context, uri: Uri): String {
     var name = "Unknown"
@@ -57,15 +59,29 @@ fun BookShelfScreen(
     var searchQuery by remember { mutableStateOf("") }
     var isSearching by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val updateChecker = androidx.hilt.navigation.compose.hiltViewModel<com.tz.listenbook.presentation.bookshelf.UpdateCheckerViewModel>()
+    val updateUiState by updateChecker.uiState.collectAsState()
 
-    // Multi-file picker for batch import
+    // Auto-check for updates on first launch (if enabled)
+    var autoChecked by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (!autoChecked && SettingsPrefs.isAutoUpdateCheck(context)) {
+            autoChecked = true
+            updateChecker.checkForUpdate()
+        }
+    }
+
+    // Multi-file picker for batch import - filter to TXT/EPUB
     val multiFilePicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenMultipleDocuments()
+        contract = ActivityResultContracts.GetMultipleContents()
     ) { uris: List<Uri> ->
         if (uris.isNotEmpty()) {
             uris.forEach { uri ->
                 val fileName = getFileName(context, uri)
-                viewModel.importBook(uri, fileName)
+                val ext = fileName.substringAfterLast('.', "").lowercase()
+                if (ext in listOf("txt", "epub")) {
+                    viewModel.importBook(uri, fileName)
+                }
             }
         }
     }
@@ -118,7 +134,7 @@ fun BookShelfScreen(
                             Icon(Icons.Default.Settings, contentDescription = "设置")
                         }
                         IconButton(onClick = {
-                            multiFilePicker.launch(arrayOf("text/plain", "application/epub+zip"))
+                            multiFilePicker.launch("*/*")
                         }) {
                             Icon(Icons.Default.Add, contentDescription = "导入书籍")
                         }
@@ -160,7 +176,7 @@ fun BookShelfScreen(
                     } else {
                         EmptyBookShelf(
                             onAddClick = {
-                                multiFilePicker.launch(arrayOf("text/plain", "application/epub+zip", "*/*"))
+                                multiFilePicker.launch("*/*")
                             },
                             modifier = Modifier.align(Alignment.Center)
                         )
@@ -232,6 +248,48 @@ fun BookShelfScreen(
                 dismissButton = {
                     TextButton(onClick = { showDeleteDialog = -1L }) {
                         Text("取消")
+                    }
+                }
+            )
+        }
+
+        // Update dialog (auto-check or manual)
+        updateUiState.updateInfo?.let { info ->
+            AlertDialog(
+                onDismissRequest = { updateChecker.clearUpdateInfo() },
+                title = { Text("发现新版本 v${info.versionName}") },
+                text = {
+                    Column {
+                        Text(
+                            "发布日期: ${info.releaseDate}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                            shape = MaterialTheme.shapes.small
+                        ) {
+                            Text(
+                                text = info.releaseBody.ifBlank { "请前往 GitHub 查看更新详情" },
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(8.dp)
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(info.downloadUrl)))
+                        updateChecker.clearUpdateInfo()
+                    }) {
+                        Text("前往下载")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { updateChecker.clearUpdateInfo() }) {
+                        Text("稍后再说")
                     }
                 }
             )

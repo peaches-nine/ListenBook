@@ -8,8 +8,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
 import org.jsoup.parser.Parser
-import java.io.File
-import java.io.FileInputStream
 import java.util.zip.ZipInputStream
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -44,11 +42,27 @@ class EpubParser @Inject constructor(
             val title = doc.select("title").text().takeIf { it.isNotBlank() }
                 ?: doc.select("h1,h2,h3").firstOrNull()?.text()
                 ?: "第${index + 1}章"
-            val textContent = doc.body().text()
+            // Extract text preserving paragraph breaks for chapter detection
+            val textContent = doc.body().select("p,div,h1,h2,h3,h4,h5,h6,li,blockquote,pre")
+                .joinToString("\n") { it.text() }
+                .takeIf { it.isNotBlank() }
+                ?: doc.body().text()
 
             if (textContent.isNotBlank()) {
                 chapters.add(ChapterContent(chapters.size, title, textContent))
             }
+        }
+
+        // If EPUB has only 1-2 chapters with large content, try to split by chapter patterns
+        if (chapters.size <= 2 && chapters.any { it.content.length > 10000 }) {
+            val combinedChapters = chapters.flatMap { chapter ->
+                val detected = ChapterDetector.splitByChapters(chapter.content)
+                if (detected.size > 1) detected else listOf(chapter)
+            }
+            chapters.clear()
+            chapters.addAll(combinedChapters.mapIndexed { index, chapterContent ->
+                ChapterContent(index, chapterContent.title, chapterContent.content)
+            })
         }
 
         if (chapters.isEmpty()) {
