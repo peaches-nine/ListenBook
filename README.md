@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo.svg" alt="ListenBook Logo" width="120">
+  <img src="logo.png" alt="ListenBook" width="120">
 </p>
 
 <h1 align="center">ListenBook</h1>
