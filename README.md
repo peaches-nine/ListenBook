@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo_standard.svg" alt="ListenBook" width="120">
+  <img src="https://raw.githubusercontent.com/peaches-nine/ListenBook/master/logo_standard.svg" alt="ListenBook" width="120">
 </p>
 
 <h1 align="center">ListenBook</h1>
