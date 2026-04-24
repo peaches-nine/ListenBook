@@ -90,8 +90,9 @@ class UpdateCheckerViewModel @Inject constructor(
                     val body = response.body ?: throw RuntimeException("Empty response body")
                     val contentLength = body.contentLength()
 
-                    val cacheDir = context.cacheDir
-                    val apkFile = File(cacheDir, "ListenBook-update.apk")
+                    // Use external cache if available — system installer can access it more reliably
+                    val downloadDir = context.externalCacheDir ?: context.cacheDir
+                    val apkFile = File(downloadDir, "ListenBook-update.apk")
                     if (apkFile.exists()) apkFile.delete()
 
                     body.byteStream().use { input ->
