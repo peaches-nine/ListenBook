@@ -417,12 +417,32 @@ private fun SentenceItem(
 @Composable
 private fun ControlBar(uiState: PlayerUiState, onPlayPause: () -> Unit, onNextChapter: () -> Unit, onPreviousChapter: () -> Unit, onSpeedClick: () -> Unit) {
     Surface(modifier = Modifier.fillMaxWidth().navigationBarsPadding(), tonalElevation = 8.dp) {
-        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Left side: speed + previous
             IconButton(onSpeedClick) { Text("${uiState.speed}x", fontSize = 14.sp) }
+            Spacer(Modifier.width(8.dp))
             IconButton(onPreviousChapter) { Icon(Icons.Default.SkipPrevious, "上一章", modifier = Modifier.size(36.dp)) }
+
+            Spacer(Modifier.weight(1f))
+
+            // Center: play button
             if (uiState.isLoading) CircularProgressIndicator(Modifier.size(56.dp))
-            else FloatingActionButton(onPlayPause, shape = CircleShape) { Icon(if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, if (uiState.isPlaying) "暂停" else "播放", Modifier.size(32.dp)) }
+            else FloatingActionButton(onPlayPause, shape = CircleShape) {
+                Icon(if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    if (uiState.isPlaying) "暂停" else "播放", Modifier.size(32.dp))
+            }
+
+            Spacer(Modifier.weight(1f))
+
+            // Right side: next + (placeholder for balance)
             IconButton(onNextChapter) { Icon(Icons.Default.SkipNext, "下一章", Modifier.size(36.dp)) }
+            Spacer(Modifier.width(8.dp))
+            // Placeholder to balance speed button on left
+            Spacer(Modifier.size(48.dp))
         }
     }
 }
