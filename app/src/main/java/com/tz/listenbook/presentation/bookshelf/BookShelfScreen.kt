@@ -263,10 +263,15 @@ fun BookShelfScreen(
                 onInstallClick = {
                     val apkFile = updateUiState.apkFile
                     if (apkFile != null && apkFile.exists()) {
-                        val uri = android.net.Uri.fromFile(apkFile)
+                        val uri = androidx.core.content.FileProvider.getUriForFile(
+                            context,
+                            "${context.packageName}.fileprovider",
+                            apkFile
+                        )
                         val intent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
                             data = uri
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                                 putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
                             }
