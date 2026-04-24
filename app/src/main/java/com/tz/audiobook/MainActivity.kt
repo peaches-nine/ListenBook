@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.core.view.WindowCompat
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.tz.audiobook.presentation.navigation.NavGraph
@@ -38,12 +39,17 @@ class MainActivity : ComponentActivity() {
         darkModeSetting = SettingsPrefs.getDarkMode(this)
         _useDarkTheme.value = resolveDarkTheme()
 
+        // Set initial status bar appearance
+        updateStatusBarAppearance(_useDarkTheme.value)
+
         // Listen for SharedPreferences changes - store as member to prevent GC
         val prefs = getSharedPreferences("audiobook_settings", MODE_PRIVATE)
         prefsListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             if (key == "dark_mode") {
                 darkModeSetting = SettingsPrefs.getDarkMode(this)
-                _useDarkTheme.value = resolveDarkTheme()
+                val newTheme = resolveDarkTheme()
+                _useDarkTheme.value = newTheme
+                updateStatusBarAppearance(newTheme)
             }
         }
         prefs.registerOnSharedPreferenceChangeListener(prefsListener)
@@ -51,6 +57,11 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val useDarkTheme by _useDarkTheme.collectAsState()
+
+            // Update status bar when theme changes
+            SideEffect {
+                updateStatusBarAppearance(useDarkTheme)
+            }
 
             AudioBookAppTheme(darkTheme = useDarkTheme) {
                 val navController = rememberNavController()
@@ -67,9 +78,22 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Update status bar icon/text color
+     * - darkTheme = true: white icons (for dark background)
+     * - darkTheme = false: dark icons (for light background)
+     */
+    private fun updateStatusBarAppearance(darkTheme: Boolean) {
+        WindowCompat.getInsetsController(window, window.decorView).let { controller ->
+            // isAppearanceLightStatusBars = true means dark icons (for light theme)
+            // isAppearanceLightStatusBars = false means white icons (for dark theme)
+            controller.isAppearanceLightStatusBars = !darkTheme
+            controller.isAppearanceLightNavigationBars = !darkTheme
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
-        // Unregister listener to prevent leaks
         prefsListener?.let { listener ->
             getSharedPreferences("audiobook_settings", MODE_PRIVATE)
                 .unregisterOnSharedPreferenceChangeListener(listener)
@@ -78,9 +102,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        // Update dark theme when system mode changes
         if (darkModeSetting == "system") {
-            _useDarkTheme.value = resolveDarkTheme()
+            val newTheme = resolveDarkTheme()
+            _useDarkTheme.value = newTheme
+            updateStatusBarAppearance(newTheme)
         }
     }
 
@@ -88,20 +113,14 @@ class MainActivity : ComponentActivity() {
         return when (darkModeSetting) {
             "dark" -> true
             "light" -> false
-            else -> {
-                // Read directly from Activity resources, not from Compose
-                (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-            }
+            else -> (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
         }
     }
 
     override fun onPause() {
         super.onPause()
         if (!SettingsPrefs.isBackgroundPlayEnabled(this)) {
-            val intent = Intent(this, PlaybackService::class.java).apply {
-                action = PlaybackService.ACTION_PAUSE
-            }
-            startService(intent)
+            startService(Intent(this, PlaybackService::class.java).apply { action = PlaybackService.ACTION_PAUSE })
         }
     }
 }
