@@ -120,21 +120,12 @@ fun PlayerScreen(
             AnimatedVisibility(visible = showBars, enter = fadeIn(), exit =fadeOut()) {
                 TopAppBar(
                     title = {
-                        Text(uiState.book?.title ?: "", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(uiState.book?.title ?: "", maxLines = 2, overflow = TextOverflow.Ellipsis)
                     },
                     navigationIcon = {
                         IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
                     },
                     actions = {
-                        if (uiState.sleepTimerMinutes > 0 || uiState.sleepAtChapterEnd) {
-                            IconButton(onClick = viewModel::toggleSleepDialog) {
-                                Icon(Icons.Default.Timer, "睡眠定时器", tint = MaterialTheme.colorScheme.primary)
-                            }
-                        }
-                        IconButton(onClick = viewModel::toggleVoiceDialog) { Icon(Icons.Default.RecordVoiceOver, "选择配音") }
-                        IconButton(onClick = viewModel::toggleBookmarkList) {
-                            Icon(Icons.Default.Bookmark, "书签", tint = if (uiState.showBookmarkList) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
                         if (uiState.chapters.isNotEmpty()) {
                             TextButton(onClick = viewModel::toggleChapterList) {
                                 val progress = ((uiState.currentChapterIndex + 1).toFloat() / uiState.chapters.size * 100)
@@ -146,20 +137,40 @@ fun PlayerScreen(
                 )
             }
 
-            // Pinned chapter title (small, always visible)
+            // Pinned chapter title - add top padding when fullscreen to avoid notch/cutout
             if (uiState.chapters.isNotEmpty() && uiState.chapters.getOrNull(uiState.currentChapterIndex) != null) {
                 Surface(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().padding(top = if (isFullscreen) 32.dp else 0.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                 ) {
-                    Text(
-                        text = uiState.chapters[uiState.currentChapterIndex].title,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = uiState.chapters[uiState.currentChapterIndex].title,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        // Voice and bookmark icons in chapter title bar
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            IconButton(onClick = viewModel::toggleVoiceDialog, modifier = Modifier.size(28.dp)) {
+                                Icon(Icons.Default.RecordVoiceOver, "选择配音", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            IconButton(onClick = viewModel::toggleBookmarkList, modifier = Modifier.size(28.dp)) {
+                                Icon(Icons.Default.Bookmark, "书签", modifier = Modifier.size(18.dp), tint = if (uiState.showBookmarkList) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            if (uiState.sleepTimerMinutes > 0 || uiState.sleepAtChapterEnd) {
+                                IconButton(onClick = viewModel::toggleSleepDialog, modifier = Modifier.size(28.dp)) {
+                                    Icon(Icons.Default.Timer, "睡眠定时器", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -220,8 +231,7 @@ fun PlayerScreen(
                         },
                         onNextChapter = viewModel::nextChapter,
                         onPreviousChapter = viewModel::previousChapter,
-                        onSpeedClick = viewModel::toggleSpeedDialog,
-                        onSleepClick = viewModel::toggleSleepDialog
+                        onSpeedClick = viewModel::toggleSpeedDialog
                     )
                 }
             }
@@ -403,7 +413,7 @@ private fun SentenceItem(
 }
 
 @Composable
-private fun ControlBar(uiState: PlayerUiState, onPlayPause: () -> Unit, onNextChapter: () -> Unit, onPreviousChapter: () -> Unit, onSpeedClick: () -> Unit, onSleepClick: () -> Unit) {
+private fun ControlBar(uiState: PlayerUiState, onPlayPause: () -> Unit, onNextChapter: () -> Unit, onPreviousChapter: () -> Unit, onSpeedClick: () -> Unit) {
     Surface(modifier = Modifier.fillMaxWidth(), tonalElevation = 8.dp) {
         Row(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
             IconButton(onSpeedClick) { Text("${uiState.speed}x", fontSize = 14.sp) }
@@ -411,7 +421,6 @@ private fun ControlBar(uiState: PlayerUiState, onPlayPause: () -> Unit, onNextCh
             if (uiState.isLoading) CircularProgressIndicator(Modifier.size(56.dp))
             else FloatingActionButton(onPlayPause, shape = CircleShape) { Icon(if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, if (uiState.isPlaying) "暂停" else "播放", Modifier.size(32.dp)) }
             IconButton(onNextChapter) { Icon(Icons.Default.SkipNext, "下一章", Modifier.size(36.dp)) }
-            IconButton(onSleepClick) { Icon(Icons.Default.Timer, "睡眠定时器", tint = if (uiState.sleepTimerMinutes > 0 || uiState.sleepAtChapterEnd) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
         }
     }
 }
