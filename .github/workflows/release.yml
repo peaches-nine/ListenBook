@@ -53,8 +53,8 @@ jobs:
       - name: Rename APK
         run: |
           ls app/build/outputs/apk/release/
-          mv app/build/outputs/apk/release/app-release.apk \
-             app/build/outputs/apk/release/ListenBook-${{ steps.version.outputs.version }}.apk || true
+          APK_FILE=$(find app/build/outputs/apk/release/ -name "*.apk" -type f | head -1)
+          mv "$APK_FILE" "app/build/outputs/apk/release/ListenBook-${{ steps.version.outputs.version }}.apk"
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
