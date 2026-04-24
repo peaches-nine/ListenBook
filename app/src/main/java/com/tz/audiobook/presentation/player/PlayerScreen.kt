@@ -12,6 +12,8 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -414,7 +416,7 @@ private fun SentenceItem(
 
 @Composable
 private fun ControlBar(uiState: PlayerUiState, onPlayPause: () -> Unit, onNextChapter: () -> Unit, onPreviousChapter: () -> Unit, onSpeedClick: () -> Unit) {
-    Surface(modifier = Modifier.fillMaxWidth(), tonalElevation = 8.dp) {
+    Surface(modifier = Modifier.fillMaxWidth().navigationBarsPadding(), tonalElevation = 8.dp) {
         Row(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
             IconButton(onSpeedClick) { Text("${uiState.speed}x", fontSize = 14.sp) }
             IconButton(onPreviousChapter) { Icon(Icons.Default.SkipPrevious, "上一章", modifier = Modifier.size(36.dp)) }
