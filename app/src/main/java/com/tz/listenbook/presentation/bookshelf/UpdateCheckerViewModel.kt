@@ -90,8 +90,8 @@ class UpdateCheckerViewModel @Inject constructor(
                     val body = response.body ?: throw RuntimeException("Empty response body")
                     val contentLength = body.contentLength()
 
-                    // Use external cache if available — system installer can access it more reliably
                     val downloadDir = context.externalCacheDir ?: context.cacheDir
+                    Log.d(TAG, "Download dir: ${downloadDir.absolutePath}, isExternal: ${context.externalCacheDir != null}")
                     val apkFile = File(downloadDir, "ListenBook-update.apk")
                     if (apkFile.exists()) apkFile.delete()
 
@@ -116,6 +116,7 @@ class UpdateCheckerViewModel @Inject constructor(
                         downloadProgress = 1f,
                         apkFile = apkFile
                     )
+                    Log.d(TAG, "Download complete: ${apkFile.absolutePath}, size=${apkFile.length()}")
 
                     // Launch system installer (must be on Main thread)
                     withContext(Dispatchers.Main) {
@@ -134,6 +135,7 @@ class UpdateCheckerViewModel @Inject constructor(
     }
 
     private fun installApk(apkFile: File) {
+        Log.d(TAG, "installApk: ${apkFile.absolutePath}, exists=${apkFile.exists()}, size=${apkFile.length()}")
         val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             FileProvider.getUriForFile(
                 context,
@@ -152,8 +154,12 @@ class UpdateCheckerViewModel @Inject constructor(
                 putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
             }
         }
-
-        context.startActivity(intent)
+        Log.d(TAG, "Starting installer intent with URI: $uri")
+        try {
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start installer", e)
+        }
     }
 
     override fun onCleared() {

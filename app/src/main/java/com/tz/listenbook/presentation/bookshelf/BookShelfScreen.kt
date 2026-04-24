@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -262,21 +263,27 @@ fun BookShelfScreen(
                 onDownloadClick = { updateChecker.downloadAndInstall(info.apkUrl) },
                 onInstallClick = {
                     val apkFile = updateUiState.apkFile
-                    if (apkFile != null && apkFile.exists()) {
+                    Log.d(TAG, "Install clicked. File: ${apkFile?.absolutePath}, exists: ${apkFile?.exists()}")
+                    try {
                         val uri = androidx.core.content.FileProvider.getUriForFile(
                             context,
                             "${context.packageName}.fileprovider",
-                            apkFile
+                            apkFile!!
                         )
+                        Log.d(TAG, "APK URI: $uri")
                         val intent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
                             data = uri
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
-                            }
                         }
-                        context.startActivity(intent)
+                        // Resolve check
+                        if (context.packageManager.resolveActivity(intent, 0) != null) {
+                            context.startActivity(intent)
+                            Log.d(TAG, "Installer activity started")
+                        } else {
+                            Log.e(TAG, "No activity found to handle ACTION_INSTALL_PACKAGE")
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to start installer", e)
                     }
                 },
                 onBrowserClick = {
