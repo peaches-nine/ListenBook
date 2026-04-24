@@ -405,12 +405,28 @@ fun SettingsScreen(
 
         // Update dialog
         updateUiState.updateInfo?.let { info ->
-            UpdateDialog(
+            com.tz.listenbook.presentation.bookshelf.UpdateDialog(
                 info = info,
+                state = updateUiState,
                 onDismiss = { updateChecker.clearUpdateInfo() },
-                onUpdateClick = {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(info.downloadUrl))
-                    context.startActivity(intent)
+                onDownloadClick = { updateChecker.downloadAndInstall(info.apkUrl) },
+                onInstallClick = {
+                    val apkFile = updateUiState.apkFile
+                    if (apkFile != null && apkFile.exists()) {
+                        val uri = android.net.Uri.fromFile(apkFile)
+                        val intent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
+                            data = uri
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
+                            }
+                        }
+                        context.startActivity(intent)
+                    }
+                },
+                onBrowserClick = {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.downloadUrl)))
+                    updateChecker.clearUpdateInfo()
                 }
             )
         }

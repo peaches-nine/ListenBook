@@ -255,42 +255,28 @@ fun BookShelfScreen(
 
         // Update dialog (auto-check or manual)
         updateUiState.updateInfo?.let { info ->
-            AlertDialog(
-                onDismissRequest = { updateChecker.clearUpdateInfo() },
-                title = { Text("发现新版本 v${info.versionName}") },
-                text = {
-                    Column {
-                        Text(
-                            "发布日期: ${info.releaseDate}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                            shape = MaterialTheme.shapes.small
-                        ) {
-                            Text(
-                                text = info.releaseBody.ifBlank { "请前往 GitHub 查看更新详情" },
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.padding(8.dp)
-                            )
+            UpdateDialog(
+                info = info,
+                state = updateUiState,
+                onDismiss = { updateChecker.clearUpdateInfo() },
+                onDownloadClick = { updateChecker.downloadAndInstall(info.apkUrl) },
+                onInstallClick = {
+                    val apkFile = updateUiState.apkFile
+                    if (apkFile != null && apkFile.exists()) {
+                        val uri = android.net.Uri.fromFile(apkFile)
+                        val intent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
+                            data = uri
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
+                            }
                         }
+                        context.startActivity(intent)
                     }
                 },
-                confirmButton = {
-                    TextButton(onClick = {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(info.downloadUrl)))
-                        updateChecker.clearUpdateInfo()
-                    }) {
-                        Text("前往下载")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { updateChecker.clearUpdateInfo() }) {
-                        Text("稍后再说")
-                    }
+                onBrowserClick = {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(info.downloadUrl)))
+                    updateChecker.clearUpdateInfo()
                 }
             )
         }
@@ -398,4 +384,85 @@ private fun BookCard(
             )
         }
     }
+}
+
+@Composable
+internal fun UpdateDialog(
+    info: com.tz.listenbook.data.remote.github.ReleaseInfo,
+    state: UpdateUiState,
+    onDismiss: () -> Unit,
+    onDownloadClick: () -> Unit,
+    onInstallClick: () -> Unit,
+    onBrowserClick: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("发现新版本 v${info.versionName}") },
+        text = {
+            Column {
+                Text(
+                    "发布日期: ${info.releaseDate}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(8.dp))
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(
+                        text = info.releaseBody.ifBlank { "请查看 GitHub 获取更新详情" },
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(8.dp)
+                    )
+                }
+
+                // Download progress
+                if (state.isDownloading || state.apkFile != null) {
+                    Spacer(Modifier.height(12.dp))
+                    LinearProgressIndicator(
+                        progress = { state.downloadProgress },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = if (state.apkFile != null) "下载完成，点击安装" else "下载中... ${(state.downloadProgress * 100).toInt()}%",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                state.downloadError?.let { error ->
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = error,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            when {
+                state.apkFile != null -> {
+                    Button(onClick = onInstallClick) { Text("立即安装") }
+                }
+                state.isDownloading -> {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                }
+                else -> {
+                    Button(onClick = onDownloadClick) { Text("下载并安装") }
+                }
+            }
+        },
+        dismissButton = {
+            if (!state.isDownloading) {
+                Column {
+                    TextButton(onClick = onBrowserClick) { Text("浏览器下载") }
+                    TextButton(onClick = onDismiss) { Text("稍后再说") }
+                }
+            }
+        }
+    )
 }

@@ -15,8 +15,10 @@ data class ReleaseInfo(
     val versionName: String,
     val releaseBody: String,
     val downloadUrl: String,
+    val apkUrl: String,
     val releaseDate: String
 )
+
 
 @Singleton
 class GitHubUpdateChecker @Inject constructor(
@@ -52,6 +54,24 @@ class GitHubUpdateChecker @Inject constructor(
             val versionName = tagName.removePrefix("v")
             val versionCode = parseVersionCode(versionName)
 
+            // Parse APK direct download URL from release assets
+            val assets = json.optJSONArray("assets")
+            var apkUrl = ""
+            if (assets != null) {
+                for (i in 0 until assets.length()) {
+                    val asset = assets.getJSONObject(i)
+                    val name = asset.optString("name", "")
+                    if (name.endsWith(".apk")) {
+                        apkUrl = asset.getString("browser_download_url")
+                        break
+                    }
+                }
+            }
+            // Fallback to GitHub releases download pattern
+            if (apkUrl.isEmpty()) {
+                apkUrl = "https://github.com/peaches-nine/ListenBook/releases/download/$tagName/ListenBook-$versionName.apk"
+            }
+
             Log.d(TAG, "Latest: $tagName ($versionCode), current: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
 
             if (versionCode > BuildConfig.VERSION_CODE) {
@@ -60,6 +80,7 @@ class GitHubUpdateChecker @Inject constructor(
                     versionName = versionName,
                     releaseBody = releaseBody.ifBlank { releaseName },
                     downloadUrl = htmlUrl,
+                    apkUrl = apkUrl,
                     releaseDate = publishedAt.take(10) // "2024-01-15"
                 )
             }
