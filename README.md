@@ -36,7 +36,7 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/你的用户名/AudioBookApp.git
+git clone https://github.com/peaches-nine/AudioBookApp.git
 
 # 构建 APK
 cd AudioBookApp
@@ -45,7 +45,7 @@ cd AudioBookApp
 
 ### 直接下载
 
-下载最新的 APK：[Releases](链接)
+下载最新的 APK：[Releases](https://github.com/peaches-nine/AudioBookApp/releases)
 
 ## 🚀 使用方法
 
@@ -81,7 +81,7 @@ cd AudioBookApp
 
 ## ⭐ Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=你的用户名/AudioBookApp&type=Date)](https://star-history.com/你的用户名/AudioBookApp)
+[![Star History Chart](https://api.star-history.com/svg?repos=peaches-nine/AudioBookApp&type=Date)](https://star-history.com/peaches-nine/AudioBookApp)
 
 ---
 
