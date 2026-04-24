@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Grant execute permission
+        run: chmod +x gradlew
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          # versionCode: 0.0.1 -> 1, 0.1.2 -> 102, 1.2.3 -> 12300
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+          VERSION_CODE=$((MAJOR * 10000 + MINOR * 100 + PATCH))
+          echo "versionCode=$VERSION_CODE" >> $GITHUB_OUTPUT
+
+      - name: Update version
+        run: |
+          sed -i "s/versionCode = [0-9]*$/versionCode = ${{ steps.version.outputs.versionCode }}/" app/build.gradle.kts
+          sed -i "s/versionName = \"[^\"]*\"$/versionName = \"${{ steps.version.outputs.version }}\"/" app/build.gradle.kts
+
+      - name: Build APK
+        run: ./gradlew assembleRelease
+
+      - name: Rename APK
+        run: |
+          ls app/build/outputs/apk/release/
+          mv app/build/outputs/apk/release/app-release.apk \
+             app/build/outputs/apk/release/ListenBook-${{ steps.version.outputs.version }}.apk || true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: ListenBook v${{ steps.version.outputs.version }}
+          files: app/build/outputs/apk/release/*.apk
+          generate_release_notes: true
