@@ -27,14 +27,6 @@
 - **后台播放** - 支持后台继续播放
 - **数据备份** - 导出/导入进度和设置
 
-## 截图
-
-<p align="center">
-  <img src="screenshots/bookshelf.png" width="200" alt="书架">
-  <img src="screenshots/player.png" width="200" alt="播放器">
-  <img src="screenshots/settings.png" width="200" alt="设置">
-</p>
-
 ## 安装
 
 **下载 APK**: [Releases](https://github.com/peaches-nine/ListenBook/releases)
