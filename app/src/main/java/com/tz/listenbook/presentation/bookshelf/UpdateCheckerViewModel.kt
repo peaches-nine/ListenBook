@@ -47,6 +47,14 @@ class UpdateCheckerViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(UpdateUiState())
     val uiState: StateFlow<UpdateUiState> = _uiState.asStateFlow()
 
+    // Separate client for downloads with no WebSocket interference
+    private val downloadClient = OkHttpClient.Builder()
+        .connectTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+        .followRedirects(true)
+        .followSslRedirects(true)
+        .build()
+
     fun checkForUpdate() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isChecking = true, downloadError = null)
@@ -64,13 +72,16 @@ class UpdateCheckerViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(isDownloading = true, downloadProgress = 0f, downloadError = null, apkFile = null)
 
             try {
+                Log.d(TAG, "Downloading APK from: $apkUrl")
                 val request = Request.Builder().url(apkUrl).build()
-                val response = okHttpClient.newCall(request).execute()
+                val response = downloadClient.newCall(request).execute()
+
+                Log.d(TAG, "Response: code=${response.code}, content-length=${response.body?.contentLength()}")
 
                 if (!response.isSuccessful) {
                     _uiState.value = _uiState.value.copy(
                         isDownloading = false,
-                        downloadError = "下载失败: HTTP ${response.code}"
+                        downloadError = "下载失败: HTTP ${response.code} ${response.message}"
                     )
                     return@launch
                 }
@@ -108,10 +119,10 @@ class UpdateCheckerViewModel @Inject constructor(
                 installApk(apkFile)
 
             } catch (e: Exception) {
-                Log.e(TAG, "Download failed", e)
+                Log.e(TAG, "Download failed: ${e.javaClass.simpleName} - ${e.message}", e)
                 _uiState.value = _uiState.value.copy(
                     isDownloading = false,
-                    downloadError = "下载失败: ${e.message}"
+                    downloadError = "下载失败: ${e.javaClass.simpleName} - ${e.message}"
                 )
             }
         }
