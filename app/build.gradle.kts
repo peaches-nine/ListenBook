@@ -7,11 +7,11 @@ plugins {
 }
 
 android {
-    namespace = "com.tz.audiobook"
+    namespace = "com.tz.listenbook"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.tz.audiobook"
+        applicationId = "com.tz.listenbook"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
