@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 
 object SettingsPrefs {
@@ -128,6 +129,10 @@ fun SettingsScreen(
     var deleteBookId by remember { mutableLongStateOf(-1) }
     var deleteBookTitle by remember { mutableStateOf("") }
 
+    // Lift font settings state to parent level for preview
+    var fontSize by remember { mutableIntStateOf(SettingsPrefs.getFontSizeSp(context)) }
+    var lineHeight by remember { mutableFloatStateOf(SettingsPrefs.getLineHeightMult(context)) }
+
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri: Uri? -> if (uri != null) viewModel.exportData(context, uri) }
@@ -165,7 +170,6 @@ fun SettingsScreen(
             }
 
             item {
-                var fontSize by remember { mutableIntStateOf(SettingsPrefs.getFontSizeSp(context)) }
                 SettingSliderRow(
                     icon = Icons.Default.TextFields,
                     title = "字体大小",
@@ -178,7 +182,6 @@ fun SettingsScreen(
             }
 
             item {
-                var lineHeight by remember { mutableFloatStateOf(SettingsPrefs.getLineHeightMult(context)) }
                 SettingSliderRow(
                     icon = Icons.Default.FormatLineSpacing,
                     title = "行间距",
@@ -187,6 +190,11 @@ fun SettingsScreen(
                     valueText = String.format("%.1fx", lineHeight),
                     onValueChange = { lineHeight = it / 10f; SettingsPrefs.setLineHeightMult(context, it / 10f) }
                 )
+            }
+
+            // Preview section - uses the same fontSize/lineHeight state
+            item {
+                TextPreviewCard(fontSize = fontSize, lineHeightMult = lineHeight)
                 HorizontalDivider()
             }
 
@@ -393,4 +401,24 @@ private fun formatSize(bytes: Long): String {
     if (bytes < 1024 * 1024) return String.format("%.1f KB", bytes / 1024.0)
     if (bytes < 1024 * 1024 * 1024) return String.format("%.1f MB", bytes / (1024.0 * 1024))
     return String.format("%.1f GB", bytes / (1024.0 * 1024 * 1024))
+}
+
+@Composable
+private fun TextPreviewCard(fontSize: Int, lineHeightMult: Float) {
+    val previewText = "天下风云出我辈，一入江湖岁月催。\n皇图霸业谈笑中，不胜人生一场醉。\n提剑跨骑挥鬼雨，白骨如山鸟惊飞。"
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text("预览效果", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = previewText,
+                fontSize = fontSize.sp,
+                lineHeight = fontSize.sp * lineHeightMult
+            )
+        }
+    }
 }
