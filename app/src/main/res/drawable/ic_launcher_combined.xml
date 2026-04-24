@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Gradient background (simulated with multiple rects) -->
+    <!-- Deep green (#2E7D32) to light green (#81C784) diagonal gradient -->
+    <path
+        android:fillColor="#2E7D32"
+        android:pathData="M0,0 L108,0 L0,108 Z"/>
+    <path
+        android:fillColor="#3D8B40"
+        android:pathData="M0,0 L108,108 L0,108 Z"/>
+    <path
+        android:fillColor="#4A9E4D"
+        android:pathData="M0,54 L108,0 L108,54 L54,54 Z"/>
+    <path
+        android:fillColor="#5EB661"
+        android:pathData="M54,54 L108,54 L108,108 L54,108 Z"/>
+    <path
+        android:fillColor="#81C784"
+        android:pathData="M108,0 L108,108 L54,108 Z"/>
+
+    <!-- Open book (center-bottom) -->
+    <group
+        android:translateX="26"
+        android:translateY="56">
+        <!-- Left page -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M26,0 L26,28 Q26,30 24,30 L2,30 Q0,30 0,28 L0,2 Q0,0 2,0 L24,0 Q26,0 26,2 Z"/>
+        <!-- Right page -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M28,0 L28,28 Q28,30 30,30 L52,30 Q54,30 54,28 L54,2 Q54,0 52,0 L30,0 Q28,0 28,2 Z"/>
+        <!-- Book spine -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M26,0 Q27,-2 28,0 L28,30 L26,30 Z"/>
+        <!-- Book lines (left) -->
+        <path
+            android:strokeColor="#E0E0E0"
+            android:strokeWidth="0.8"
+            android:pathData="M4,6 L22,6 M4,10 L22,10 M4,14 L22,14 M4,18 L22,18"/>
+        <!-- Book lines (right) -->
+        <path
+            android:strokeColor="#E0E0E0"
+            android:strokeWidth="0.8"
+            android:pathData="M32,6 L50,6 M32,10 L50,10 M32,14 L50,14 M32,18 L50,18"/>
+    </group>
+
+    <!-- Headphone (center-top) -->
+    <group
+        android:translateX="36"
+        android:translateY="24">
+        <!-- Headband -->
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="3"
+            android:strokeLineCap="round"
+            android:fillColor="@android:color/transparent"
+            android:pathData="M4,14 Q4,4 18,4 Q32,4 32,14"/>
+        <!-- Left ear cup -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M2,14 Q0,14 0,16 L0,22 Q0,26 2,26 L6,26 Q8,26 8,22 L8,16 Q8,14 6,14 Z"/>
+        <!-- Right ear cup -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M30,14 Q28,14 28,16 L28,22 Q28,26 30,26 L34,26 Q36,26 36,22 L36,16 Q36,14 34,14 Z"/>
+        <!-- Sound waves left -->
+        <path
+            android:strokeColor="#81C784"
+            android:strokeWidth="1.5"
+            android:strokeLineCap="round"
+            android:pathData="M-4,18 Q-6,18 -6,20 Q-6,22 -4,22"/>
+        <path
+            android:strokeColor="#81C784"
+            android:strokeWidth="1.5"
+            android:strokeLineCap="round"
+            android:pathData="M-8,16 Q-10,16 -10,20 Q-10,24 -8,24"/>
+        <!-- Sound waves right -->
+        <path
+            android:strokeColor="#81C784"
+            android:strokeWidth="1.5"
+            android:strokeLineCap="round"
+            android:pathData="M40,18 Q42,18 42,20 Q42,22 40,22"/>
+        <path
+            android:strokeColor="#81C784"
+            android:strokeWidth="1.5"
+            android:strokeLineCap="round"
+            android:pathData="M44,16 Q46,16 46,20 Q46,24 44,24"/>
+    </group>
+
+</vector>

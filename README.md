@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="app/src/main/res/mipmap/ic_launcher.png" alt="ListenBook Logo" width="120">
+  <img src="logo.svg" alt="ListenBook Logo" width="120">
 </p>
 
 <h1 align="center">ListenBook</h1>

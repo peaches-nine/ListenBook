@@ -118,7 +118,7 @@ fun BookShelfScreen(
                             Icon(Icons.Default.Settings, contentDescription = "设置")
                         }
                         IconButton(onClick = {
-                            multiFilePicker.launch(arrayOf("text/plain", "application/epub+zip", "*/*"))
+                            multiFilePicker.launch(arrayOf("text/plain", "application/epub+zip"))
                         }) {
                             Icon(Icons.Default.Add, contentDescription = "导入书籍")
                         }
