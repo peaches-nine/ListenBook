@@ -8,9 +8,9 @@ data class Sentence(
 )
 
 object SentenceSplitter {
-    private val sentenceEnders = setOf('。', '！', '？', '；', '…', '.', '!', '?', ';')
-    // Chinese paired quotes: " " (U+201C/U+201D), 「」, 『』
-    private val quotePairs = listOf('“' to '”', '「' to '」', '『' to '』', '"' to '"')
+    private val sentenceEnders = setOf('。', '！', '？', '；', '…', '!', '?', ';')
+    // Note: '.' is handled separately to avoid splitting numbered titles like "1.xxx" or "1. xxx"
+    private val quotePairs = listOf('"' to '"', '「' to '」', '『' to '』', '"' to '"')
     private val openQuotes = quotePairs.map { it.first }.toSet()
     private val closeQuotes = quotePairs.map { it.second }.toSet()
 
@@ -72,6 +72,32 @@ object SentenceSplitter {
                 }
                 i++
                 continue
+            }
+
+            // Handle '.' specially - don't split if it looks like a numbered title
+            // e.g., "1.xxx", "1. xxx", "2.xxx" at the start
+            if (!inQuote && c == '.') {
+                // Check if this looks like a numbered title: digit(s) followed by '.' at the start
+                val prefix = line.substring(0, i)
+                if (prefix.matches(Regex("^\\d+$")) && start == 0) {
+                    // This is likely a numbered title like "1.xxx", don't split here
+                    i++
+                    continue
+                }
+                // Otherwise, treat '.' as sentence ender
+                var end = i
+                while (end + 1 < line.length && line[end + 1] in sentenceEnders) {
+                    end++
+                }
+                if (end + 1 < line.length && line[end + 1] in closeQuotes && line[end + 1] !in openQuotes) {
+                    end++
+                }
+
+                val sentence = line.substring(start, end + 1).trim()
+                if (sentence.isNotBlank()) {
+                    result.add(sentence)
+                }
+                start = end + 1
             }
 
             // Only split on sentence enders when NOT inside quotes

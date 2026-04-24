@@ -1,16 +1,35 @@
 package com.tz.audiobook.parser
 
 object ChapterDetector {
+    // Chinese numbers including simplified and formal forms
+    private val chineseNumbers = "[一二三四五六七八九十百千万零壹贰叁肆伍陆柒捌玖拾佰仟]"
+
     private val CHAPTER_PATTERNS = listOf(
-        Regex("^第[一二三四五六七八九十百千万零\\d]+[章节回卷部篇].*$", RegexOption.MULTILINE),
+        // Chinese chapter formats: 第X章/节/回/卷/部/篇
+        Regex("^第${chineseNumbers}+[章节回卷部篇].*$", RegexOption.MULTILINE),
         Regex("^第[0-9]+[章节回卷部篇].*$", RegexOption.MULTILINE),
-        Regex("^[零一二三四五六七八九十百千万]+[章节回卷部篇].*$", RegexOption.MULTILINE),
+        // Standalone Chinese numbers
+        Regex("^${chineseNumbers}+[章节回卷部篇].*$", RegexOption.MULTILINE),
+        // Volume format: 卷X
+        Regex("^卷${chineseNumbers}+.*$", RegexOption.MULTILINE),
+        // English chapter formats
         Regex("^Chapter\\s*\\d+.*$", setOf(RegexOption.MULTILINE, RegexOption.IGNORE_CASE)),
         Regex("^CHAPTER\\s*\\d+.*$", RegexOption.MULTILINE),
+        // Roman numeral chapters
+        Regex("^第[IVXLCDM]+[章节回卷部篇].*$", RegexOption.MULTILINE),
+        Regex("^Chapter\\s*[IVXLCDM]+.*$", setOf(RegexOption.MULTILINE, RegexOption.IGNORE_CASE)),
+        // Prologue/Epilogue and other standalone chapter words
         Regex("^Prologue.*$", setOf(RegexOption.MULTILINE, RegexOption.IGNORE_CASE)),
         Regex("^Epilogue.*$", setOf(RegexOption.MULTILINE, RegexOption.IGNORE_CASE)),
+        Regex("^序章.*$", RegexOption.MULTILINE),
+        Regex("^楔子.*$", RegexOption.MULTILINE),
+        Regex("^尾声.*$", RegexOption.MULTILINE),
+        Regex("^后记.*$", RegexOption.MULTILINE),
+        Regex("^终章.*$", RegexOption.MULTILINE),
+        // Numbered sections: 1. xxx, 2、xxx (with dot or comma)
         Regex("^\\d+[\\.、].+$", RegexOption.MULTILINE),
-        Regex("^卷[一二三四五六七八九十]+.*$", RegexOption.MULTILINE)
+        // Number followed by space and title (like "5 周日决定")
+        Regex("^\\d+\\s+[^\\s].+$", RegexOption.MULTILINE)
     )
 
     fun detectChapters(text: String): List<Pair<Int, String>> {
