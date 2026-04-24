@@ -54,19 +54,21 @@ fun PlayerScreen(
     // Fullscreen mode: auto-hide bars after 3s of playing
     var isFullscreen by remember { mutableStateOf(false) }
     var showBars by remember { mutableStateOf(true) }
+    var userPaused by remember { mutableStateOf(false) }  // Track if user manually paused
 
     // Auto-hide logic
-    LaunchedEffect(uiState.isPlaying, isFullscreen) {
-        if (uiState.isPlaying && !isFullscreen) {
+    LaunchedEffect(uiState.isPlaying) {
+        if (uiState.isPlaying) {
+            userPaused = false
             delay(3000)
             isFullscreen = true
             showBars = false
         }
     }
 
-    // When paused, show bars
-    LaunchedEffect(uiState.isPlaying) {
-        if (!uiState.isPlaying) {
+    // When user manually pauses, show bars
+    LaunchedEffect(userPaused) {
+        if (userPaused) {
             showBars = true
             isFullscreen = false
         }
@@ -118,17 +120,7 @@ fun PlayerScreen(
             AnimatedVisibility(visible = showBars, enter = fadeIn(), exit =fadeOut()) {
                 TopAppBar(
                     title = {
-                        Column {
-                            Text(uiState.book?.title ?: "", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            if (uiState.chapters.isNotEmpty()) {
-                                Text(
-                                    uiState.chapters.getOrNull(uiState.currentChapterIndex)?.title ?: "",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1, overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
+                        Text(uiState.book?.title ?: "", maxLines = 1, overflow = TextOverflow.Ellipsis)
                     },
                     navigationIcon = {
                         IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
@@ -219,8 +211,12 @@ fun PlayerScreen(
                     ControlBar(
                         uiState = uiState,
                         onPlayPause = {
-                            val actionType = if (uiState.isPlaying) PlaybackService.ACTION_PAUSE else PlaybackService.ACTION_RESUME
-                            context.startService(Intent(context, PlaybackService::class.java).apply { action = actionType })
+                            if (uiState.isPlaying) {
+                                userPaused = true
+                                context.startService(Intent(context, PlaybackService::class.java).apply { action = PlaybackService.ACTION_PAUSE })
+                            } else {
+                                context.startService(Intent(context, PlaybackService::class.java).apply { action = PlaybackService.ACTION_RESUME })
+                            }
                         },
                         onNextChapter = viewModel::nextChapter,
                         onPreviousChapter = viewModel::previousChapter,
