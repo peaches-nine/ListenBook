@@ -69,61 +69,65 @@ class UpdateCheckerViewModel @Inject constructor(
 
     fun downloadAndInstall(apkUrl: String) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isDownloading = true, downloadProgress = 0f, downloadError = null, apkFile = null)
+            withContext(Dispatchers.IO) {
+                _uiState.value = _uiState.value.copy(isDownloading = true, downloadProgress = 0f, downloadError = null, apkFile = null)
 
-            try {
-                Log.d(TAG, "Downloading APK from: $apkUrl")
-                val request = Request.Builder().url(apkUrl).build()
-                val response = downloadClient.newCall(request).execute()
+                try {
+                    Log.d(TAG, "Downloading APK from: $apkUrl")
+                    val request = Request.Builder().url(apkUrl).build()
+                    val response = downloadClient.newCall(request).execute()
 
-                Log.d(TAG, "Response: code=${response.code}, content-length=${response.body?.contentLength()}")
+                    Log.d(TAG, "Response: code=${response.code}, content-length=${response.body?.contentLength()}")
 
-                if (!response.isSuccessful) {
-                    _uiState.value = _uiState.value.copy(
-                        isDownloading = false,
-                        downloadError = "下载失败: HTTP ${response.code} ${response.message}"
-                    )
-                    return@launch
-                }
+                    if (!response.isSuccessful) {
+                        _uiState.value = _uiState.value.copy(
+                            isDownloading = false,
+                            downloadError = "下载失败: HTTP ${response.code} ${response.message}"
+                        )
+                        return@withContext
+                    }
 
-                val body = response.body ?: throw RuntimeException("Empty response body")
-                val contentLength = body.contentLength()
+                    val body = response.body ?: throw RuntimeException("Empty response body")
+                    val contentLength = body.contentLength()
 
-                val cacheDir = context.cacheDir
-                val apkFile = File(cacheDir, "ListenBook-update.apk")
-                if (apkFile.exists()) apkFile.delete()
+                    val cacheDir = context.cacheDir
+                    val apkFile = File(cacheDir, "ListenBook-update.apk")
+                    if (apkFile.exists()) apkFile.delete()
 
-                body.byteStream().use { input ->
-                    FileOutputStream(apkFile).use { output ->
-                        val buffer = ByteArray(8192)
-                        var downloaded = 0L
-                        var read: Int
-                        while (input.read(buffer).also { read = it } != -1) {
-                            output.write(buffer, 0, read)
-                            downloaded += read
-                            if (contentLength > 0) {
-                                val progress = downloaded.toFloat() / contentLength.toFloat()
-                                _uiState.value = _uiState.value.copy(downloadProgress = progress)
+                    body.byteStream().use { input ->
+                        FileOutputStream(apkFile).use { output ->
+                            val buffer = ByteArray(8192)
+                            var downloaded = 0L
+                            var read: Int
+                            while (input.read(buffer).also { read = it } != -1) {
+                                output.write(buffer, 0, read)
+                                downloaded += read
+                                if (contentLength > 0) {
+                                    val progress = downloaded.toFloat() / contentLength.toFloat()
+                                    _uiState.value = _uiState.value.copy(downloadProgress = progress)
+                                }
                             }
                         }
                     }
+
+                    _uiState.value = _uiState.value.copy(
+                        isDownloading = false,
+                        downloadProgress = 1f,
+                        apkFile = apkFile
+                    )
+
+                    // Launch system installer (must be on Main thread)
+                    withContext(Dispatchers.Main) {
+                        installApk(apkFile)
+                    }
+
+                } catch (e: Exception) {
+                    Log.e(TAG, "Download failed: ${e.javaClass.simpleName} - ${e.message}", e)
+                    _uiState.value = _uiState.value.copy(
+                        isDownloading = false,
+                        downloadError = "下载失败: ${e.javaClass.simpleName} - ${e.message}"
+                    )
                 }
-
-                _uiState.value = _uiState.value.copy(
-                    isDownloading = false,
-                    downloadProgress = 1f,
-                    apkFile = apkFile
-                )
-
-                // Launch system installer
-                installApk(apkFile)
-
-            } catch (e: Exception) {
-                Log.e(TAG, "Download failed: ${e.javaClass.simpleName} - ${e.message}", e)
-                _uiState.value = _uiState.value.copy(
-                    isDownloading = false,
-                    downloadError = "下载失败: ${e.javaClass.simpleName} - ${e.message}"
-                )
             }
         }
     }
