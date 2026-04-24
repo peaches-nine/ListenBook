@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.tz.audiobook.presentation.navigation.NavGraph
@@ -30,6 +29,7 @@ class MainActivity : ComponentActivity() {
     val useDarkTheme: StateFlow<Boolean> = _useDarkTheme.asStateFlow()
 
     private var darkModeSetting: String = "system"
+    private var prefsListener: android.content.SharedPreferences.OnSharedPreferenceChangeListener? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,14 +38,15 @@ class MainActivity : ComponentActivity() {
         darkModeSetting = SettingsPrefs.getDarkMode(this)
         _useDarkTheme.value = resolveDarkTheme()
 
-        // Listen for SharedPreferences changes
+        // Listen for SharedPreferences changes - store as member to prevent GC
         val prefs = getSharedPreferences("audiobook_settings", MODE_PRIVATE)
-        prefs.registerOnSharedPreferenceChangeListener { _, key ->
+        prefsListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             if (key == "dark_mode") {
                 darkModeSetting = SettingsPrefs.getDarkMode(this)
                 _useDarkTheme.value = resolveDarkTheme()
             }
         }
+        prefs.registerOnSharedPreferenceChangeListener(prefsListener)
 
         enableEdgeToEdge()
         setContent {
@@ -63,6 +64,15 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // Unregister listener to prevent leaks
+        prefsListener?.let { listener ->
+            getSharedPreferences("audiobook_settings", MODE_PRIVATE)
+                .unregisterOnSharedPreferenceChangeListener(listener)
         }
     }
 
