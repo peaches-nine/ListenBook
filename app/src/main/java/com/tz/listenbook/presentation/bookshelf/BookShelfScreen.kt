@@ -273,7 +273,7 @@ fun BookShelfScreen(
                         Log.d("UpdateDialog", "APK URI: $uri")
                         val intent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
                             data = uri
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
                         }
                         if (context.packageManager.resolveActivity(intent, 0) != null) {
                             context.startActivity(intent)
