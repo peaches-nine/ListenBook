@@ -70,11 +70,8 @@ class UpdateCheckerViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(isDownloading = true, downloadProgress = 0f, downloadError = null, apkFile = null)
 
                 try {
-                    Log.d(TAG, "Downloading APK from: $apkUrl")
                     val request = Request.Builder().url(apkUrl).build()
                     val response = downloadClient.newCall(request).execute()
-
-                    Log.d(TAG, "Response: code=${response.code}, content-length=${response.body?.contentLength()}")
 
                     if (!response.isSuccessful) {
                         _uiState.value = _uiState.value.copy(
@@ -87,6 +84,7 @@ class UpdateCheckerViewModel @Inject constructor(
                     val body = response.body ?: throw RuntimeException("Empty response body")
                     val contentLength = body.contentLength()
 
+                    // Internal cache — accessible via FileProvider on all Android versions
                     val apkFile = File(context.cacheDir, "ListenBook-update.apk")
                     Log.d(TAG, "Saving to: ${apkFile.absolutePath}")
 
@@ -107,7 +105,6 @@ class UpdateCheckerViewModel @Inject constructor(
                         }
                     }
 
-                    Log.d(TAG, "Download complete: size=${apkFile.length()}")
                     _uiState.value = _uiState.value.copy(
                         isDownloading = false,
                         downloadProgress = 1f,
@@ -119,7 +116,7 @@ class UpdateCheckerViewModel @Inject constructor(
                     }
 
                 } catch (e: Exception) {
-                    Log.e(TAG, "Download failed: ${e.message}", e)
+                    Log.e(TAG, "Download failed", e)
                     _uiState.value = _uiState.value.copy(
                         isDownloading = false,
                         downloadError = "下载失败: ${e.message}"
