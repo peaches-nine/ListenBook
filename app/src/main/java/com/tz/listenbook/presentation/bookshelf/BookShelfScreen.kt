@@ -263,27 +263,26 @@ fun BookShelfScreen(
                 onDownloadClick = { updateChecker.downloadAndInstall(info.apkUrl) },
                 onInstallClick = {
                     val apkFile = updateUiState.apkFile
-                    Log.d(TAG, "Install clicked. File: ${apkFile?.absolutePath}, exists: ${apkFile?.exists()}")
+                    Log.d("UpdateDialog", "Install clicked. File: ${apkFile?.absolutePath}, exists: ${apkFile?.exists()}")
                     try {
                         val uri = androidx.core.content.FileProvider.getUriForFile(
                             context,
                             "${context.packageName}.fileprovider",
                             apkFile!!
                         )
-                        Log.d(TAG, "APK URI: $uri")
+                        Log.d("UpdateDialog", "APK URI: $uri")
                         val intent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
                             data = uri
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }
-                        // Resolve check
                         if (context.packageManager.resolveActivity(intent, 0) != null) {
                             context.startActivity(intent)
-                            Log.d(TAG, "Installer activity started")
+                            Log.d("UpdateDialog", "Installer activity started")
                         } else {
-                            Log.e(TAG, "No activity found to handle ACTION_INSTALL_PACKAGE")
+                            Log.e("UpdateDialog", "No activity found to handle ACTION_INSTALL_PACKAGE")
                         }
                     } catch (e: Exception) {
-                        Log.e(TAG, "Failed to start installer", e)
+                        Log.e("UpdateDialog", "Failed to start installer", e)
                     }
                 },
                 onBrowserClick = {
